@@ -62,10 +62,17 @@ standard_errors<-function (var,nx){
   s=matrix(sqrt(diag(var)/nx))
 }
 
-student_t<-function(Beta_hat,var,nx,hyp = 0){
-  sd=sqrt(diag(var)/nx)
+student_t<-function(Beta_hat,sd,hyp = 0){
   t=(Beta_hat-hyp)/sd
+  return(t)
 }
+p_values<-function(Beta_hat, sd ,nx , hyp = 0){
+  deg_freedom = nx-length(Beta_hat)
+  t=abs(student_t(Beta_hat, sd, hyp))
+  p=2*(1-(pt(t,deg_freedom)))
+  return(p)
+}
+
 #homemade model fitting
 Beta_hat = coefs(x,y)
 asvar=asymptotic_variance(x,y)
@@ -81,4 +88,3 @@ print(Beta_hat-tests[,1]) #difference between built-in and homemade estimators
 print(se-tests[,2]) #difference between built-in and homemade std error
 
 #difference are around 1e-10 with Hc0 and 1e-4 with Hc3 
-
