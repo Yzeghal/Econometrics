@@ -39,18 +39,28 @@ estimate<-function(X,Beta_hat){
   Y_hat=X%*%Beta
 }
 
-asymptotic.variance<-function(X,Y){
+asymptotic_variance<-function(X,Y){
   nx=dim(X)[1]
   beta_hat=coefs(X,Y)
   eps_hat=Y-estimate(X,beta_hat)
-  d_eps=diag(eps_hat)
+  d_eps=diag(as.vector(eps_hat))
+  print(dim(d_eps))
   X=cbind(rep(1,nx),X)
-  X_eps = d_eps*X
+  X_eps = d_eps%*%X
   print(dim(X_eps))
-  middle_term = t(X_eps)%*%(X_eps)
+  middle_term = t(X_eps)%*%(X_eps)*nx
   print(dim(middle_term))
   sandwich_term= matrix.inverse(t(X)%*%X)
   print(dim(sandwich_term))
   var = sandwich_term %*% middle_term %*% sandwich_term
 }
 
+standard_errors<-function (var,nx){
+  s=sqrt(diag(var)/nx)
+}
+
+student_t<-function(Beta_hat,var,nx,hyp = 0){
+  sd=sqrt(diag(var)/nx)
+  t=(Beta_hat-hyp)/sd
+}
+  
