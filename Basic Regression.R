@@ -4,13 +4,7 @@ library(lmtest) #to perform test with specified indications with coeftest
 library(sandwich) # to compute heteroscedasticity robust tests : vcovHC(reg, type = "HC0")
 #library(lmtest)
 #library(sandwich)
-generator<-function(dim1=2, dim2=2, range=100){
-  #to generate random matrices and test functions
-  l=dim1*dim2
-  v=sample(-100:100,size=l,replace=TRUE)
-  v=matrix(v,dim1,dim2)
-}
-  
+
 #generating data
 #set.seed(0)
 eps=rnorm(1000, mean=0, sd=0.2)
@@ -73,18 +67,40 @@ p_values<-function(Beta_hat, sd ,nx , hyp = 0){
   return(p)
 }
 
+reg_OLS<-function(X,Y,hyp=0){
+  if (!is.matrix(X)){
+    stop("X should be a matrix")
+  }
+  if (!is.matrix(Y)){
+    stop("Y should be a matrix")
+  }
+  nx=dim(X)[1]
+  ny=dim(Y)[1]
+  if (nx!=ny){
+    message=paste(nx, 'Observations for X\n',ny, 'observations for Y\nMake sure Nx==Ny')
+    stop(message)}
+  Beta_hat=coefs(X,Y)
+  Y_hat=estimate(X,Beta_hat)
+  eps_hat=Y-Y_hat
+  asvar=asymptotic_variance(X,Y)
+  se=standard_errors(asvar,nx)
+  t=student_t(Beta_hat,se,hyp)
+  p=p_values(Beta_hat,se,nx,hyp)
+  R2=sum(Y_hat^2)/sum(Y^2)
+  values = matrix(c(Beta_hat,se,t,p), ncol=4)
+  colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values')
+  return(list('R2'=R2, 'values' = values))
+}
+
 #homemade model fitting
-Beta_hat = coefs(x,y)
-asvar=asymptotic_variance(x,y)
-se=standard_errors(asvar, 1000)
+ols<-reg_OLS(x,y)
 
 #built-in model fitting
-reg=lm(y~x)
 reg=lm(y~x)
 tests=coeftest(reg, vcov = vcovHC(reg, type = "HC0")) #performs tests on the model reg with the variance matrix calculated with vcovHC
 
 #comparaison
-print(Beta_hat-tests[,1]) #difference between built-in and homemade estimators
-print(se-tests[,2]) #difference between built-in and homemade std error
-
+print(ols$values[,1]-tests[,1]) #difference between built-in and homemade estimators
+print(ols$values[,2]-tests[,2]) #difference between built-in and homemade std error
 #difference are around 1e-10 with Hc0 and 1e-4 with Hc3 
+
