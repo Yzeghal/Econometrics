@@ -15,14 +15,15 @@ d<-d+d2
 sigma<-(d+t(d))/2
 
 beta= matrix(c(2,4))
-x=mvrnorm(1000,c(100,50),sigma[1:l,1:l])
+x=mvrnorm(1000,c(0,0),sigma[1:l,1:l])
 y=x%*%beta+eps
+y=y+x[,1]^2*x[,2]^3 #to add some omitted variable 
 
 
 
 coefs<-function(X,Y){
   nx=dim(X)[1]
-  ny=dim(y)[1]
+  ny=dim(Y)[1]
   if (nx!=ny){stop('not the same number of observations')}
   M=t(X)%*%X
   X=cbind(rep(1,nx),X)
@@ -41,14 +42,14 @@ asymptotic_variance<-function(X,Y){
   beta_hat=coefs(X,Y)
   eps_hat=Y-estimate(X,beta_hat)
   d_eps=diag(as.vector(eps_hat))
-  print(dim(d_eps))
+  #print(dim(d_eps))
   X=cbind(rep(1,nx),X)
   X_eps = d_eps%*%X
-  print(dim(X_eps))
+  #print(dim(X_eps))
   middle_term = t(X_eps)%*%(X_eps)*nx
-  print(dim(middle_term))
+  #print(dim(middle_term))
   sandwich_term= matrix.inverse(t(X)%*%X)
-  print(dim(sandwich_term))
+  #print(dim(sandwich_term))
   var = sandwich_term %*% middle_term %*% sandwich_term
 }
 
@@ -86,15 +87,16 @@ reg_OLS<-function(X,Y,hyp=0){
   se=standard_errors(asvar,nx)
   t=student_t(Beta_hat,se,hyp)
   p=p_values(Beta_hat,se,nx,hyp)
-  R2=sum(Y_hat^2)/sum(Y^2)
-  values = matrix(c(Beta_hat,se,t,p), ncol=4)
-  colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values')
+  R2=sum((Y_hat-mean(Y_hat))^2)/sum((Y-mean(Y))^2)
+  if (sum(abs(hyp))==0){hyp = rep(0,length(Beta_hat))}
+  values = matrix(c(Beta_hat,se,t,p,hyp), ncol=5)
+  colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values', 'H0_hyp')
   return(list('R2'=R2, 'values' = values))
 }
 
 #homemade model fitting
-ols<-reg_OLS(x,y)
-
+ols<-reg_OLS(x,y, hyp=c(0,0,0))
+print(ols)
 #built-in model fitting
 reg=lm(y~x)
 tests=coeftest(reg, vcov = vcovHC(reg, type = "HC0")) #performs tests on the model reg with the variance matrix calculated with vcovHC
@@ -103,4 +105,3 @@ tests=coeftest(reg, vcov = vcovHC(reg, type = "HC0")) #performs tests on the mod
 print(ols$values[,1]-tests[,1]) #difference between built-in and homemade estimators
 print(ols$values[,2]-tests[,2]) #difference between built-in and homemade std error
 #difference are around 1e-10 with Hc0 and 1e-4 with Hc3 
-
