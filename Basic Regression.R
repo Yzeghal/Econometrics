@@ -2,8 +2,6 @@ library(matrixcalc) #for matrix inversion and others
 library(MASS)#to generate multivariate data
 library(lmtest) #to perform test with specified indications with coeftest
 library(sandwich) # to compute heteroscedasticity robust tests : vcovHC(reg, type = "HC0")
-#library(lmtest)
-#library(sandwich)
 
 #generating data
 #set.seed(0)
@@ -25,10 +23,31 @@ coefs<-function(X,Y){
   nx=dim(X)[1]
   ny=dim(Y)[1]
   if (nx!=ny){stop('not the same number of observations')}
-  M=t(X)%*%X
   X=cbind(rep(1,nx),X)
+  M=t(X)%*%X
   if (det(M)==0){stop('Matrix X\'X non inversible !')}
   matrix.inverse(t(X)%*%X)%*%(t(X)%*%Y)
+}
+
+coefs_barbarian<-function(X,Y){
+  #Does the same job as coef but is more easily modifiable for NAs. 
+  nx=dim(X)[1]
+  ny=dim(Y)[1]
+  if (nx!=ny){stop('not the same number of observations')}
+  X=cbind(rep(1,nx),X)
+  M1=0
+  M2=0
+  for (i in 1:nx){
+    M1=M1+matrix(X[i,])%*% t(X[i,])
+  }
+  M1=matrix.inverse(M1/nx)
+  for (i in 1:nx){
+    M2=M2+matrix(X[i,])*Y[i,]
+  }
+  M2=M2/nx
+  
+  Beta_hat = M1%*%M2
+  return(Beta_hat)
 }
 
 estimate<-function(X,Beta_hat){
