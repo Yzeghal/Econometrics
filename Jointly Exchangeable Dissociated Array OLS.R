@@ -15,7 +15,7 @@ Uij=matrix(runif(n^2,0,1),ncol=n)
 
 f<-function(Ui,Uj,Uij){
   #function f
-  Xij=matrix(c(1,log(Ui),Ui+Uj)) #constant added here
+  Xij=matrix(c(1,Ui,Ui+Uj)) #constant added here
   # print(Xij)
   Yij=t(Beta_0)%*%matrix(Xij)+Uij/10-0.05
   # print(Yij)
@@ -88,7 +88,10 @@ J<-function(X){
       
     }
   }
-  M/nb_obs
+  M=M/nb_obs
+  if (det(M)==0){
+    stop('J is singular')
+  }
 }
 Beta2<-function(X,Y){
   if (any(dim(Y)!=dim(X)[1:2])){
@@ -161,9 +164,70 @@ Beta<-function(X,Y){ #Does the match with lm results (which simply drops all obs
   matrix.inverse(J_hat)%*%second_term
 }
 
+eps<-function(X,Y,b){
+  Y-apply(X,MARGIN=c(1,2), FUN =(function(x){t(x)%*%b}))
+}
+
+last_multip<-function(Arr, d=-1){
+  Arr[1:d-1]*Arr[d]
+}
+
+H<-function(X,Y,b){
+   
+  if (any(dim(Y)!=dim(X)[1:2])){
+    messageX = paste("2 first dimensions of X", dim(X)[1], dim(X)[2])
+    messageY = paste("\n 2 first dimensions of Y", dim(Y)[1], dim(Y)[2])
+    stop(paste(messageX,messageY))
+  }
+  if (dim(X)[1]!=dim(X)[2]){
+    stop("Matrix X is not square !")
+  }
+  d=dim(X)[3]
+  nx=dim(X)[1]
+  if (length(b)!=d){
+    stop("b and dim(X)[3] should have the same length")
+  }
+  
+  ep=eps(X,Y,b)
+  not_naX=!map_na(X)
+  not_naY=!map_na(Y)
+  viable = not_naX&not_naY
+  if (sum(diag(viable))!=0){
+    warn=paste(sum(diag(viable)),"terms in the diagonal. Should be 0")
+    warning(warn)
+  }
+  Xeps = array(0,c(nx,nx,d+1))
+  Xeps[,,1:d]=X
+  Xeps[,,d+1]=ep
+  Xeps=apply(Xeps,MARGIN=c(1,2), last_multip, d=d+1)
+  Xeps=aperm(Xeps,c(2,3,1))
+  #all(!map_na(Xeps)==viable) #test if all NAs are at the right place
+  apply(Xeps,MARGIN= 3, FUN= sum, na.rm=TRUE) # Moment condition of least squares ~1e-12 to have an idea of calculation precision loss.
+  nb_zeros = 0 #counts the number of not calculated terms in the sum over i.
+  S=matrix(0,d,d)
+  for (i in 1:nx){ #Sum over i
+    count=0 #counts the number of viable j terms
+    V=rep(0,d) #initialize the sum of X_ij*eps_hat_ij+X_ji*eps_hat_ji
+    for (j in 1:nx){
+      if (viable[i,j]&&viable[j,i]){
+        count=count+1
+        V=V+Xeps[i,j,]+Xeps[j,i,]
+      }
+    }
+    if (count==0){
+      nb_zeros=nb_zeros+1
+    }
+    count = max(count,1)
+    S=S+(matrix(V)%*%t(V)/count^2)
+  }
+  
+  S=S/(nx-nb_zeros)
+  return (S)
+}
+
+
 #Difference with built in
 l<-lm(y~x)
 Beta_hat=Beta(Xij,Yij)
-
-
+H_hat=H(Xij,Yij,Beta_hat)
 
