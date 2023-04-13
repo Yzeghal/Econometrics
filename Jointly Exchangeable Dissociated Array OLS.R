@@ -120,7 +120,9 @@ last_multip<-function(Arr, d=-1){
 }
 
 H<-function(X,Y,b){
-   
+  #returns a list(H, moments) that contains H and moments that should be equal to 0
+  #Safety tests
+  #----
   if (any(dim(Y)!=dim(X)[1:2])){
     messageX = paste("2 first dimensions of X", dim(X)[1], dim(X)[2])
     messageY = paste("\n 2 first dimensions of Y", dim(Y)[1], dim(Y)[2])
@@ -134,11 +136,12 @@ H<-function(X,Y,b){
   if (length(b)!=d){
     stop("b and dim(X)[3] should have the same length")
   }
-  
+  #----
   ep=eps(X,Y,b)
   not_naX=!map_na(X)
   not_naY=!map_na(Y)
   viable = not_naX&not_naY
+  #tests that diagonal is NA
   if (sum(diag(viable))!=0){
     warn=paste(sum(diag(viable)),"terms in the diagonal. Should be 0")
     warning(warn)
@@ -152,6 +155,7 @@ H<-function(X,Y,b){
   moment = apply(Xeps,MARGIN= 3, FUN= sum, na.rm=TRUE) # Moment condition of least squares ~1e-12 to have an idea of calculation precision loss.
   nb_zeros = 0 #counts the number of not calculated terms in the sum over i.
   S=matrix(0,d,d)
+  #heavy unvectorized calculations
   for (i in 1:nx){ #Sum over i
     count=0 #counts the number of viable j terms
     V=rep(0,d) #initialize the sum of X_ij*eps_hat_ij+X_ji*eps_hat_ji
@@ -170,6 +174,12 @@ H<-function(X,Y,b){
   
   S=S/(nx-nb_zeros)
   return (list(H=S, moments=moment))
+}
+#Small functions for inference
+#----
+estimate<-function(X,Beta_hat){
+  Y_hat=apply(X,MARGIN = c(1,2), FUN=function(x){t(Beta_hat)%*%x})
+  return (Y_hat)
 }
 
 asymptotic_variance_OLS<-function(J,H){
@@ -193,9 +203,12 @@ p_values<-function(Beta_hat, sd ,nx , hyp = 0){
   return(p)
 }
 
+#----
 
 JEDA_OLS<-function(X,Y,hyp=0){
-  if (!is.array(X)){
+  #safety tests
+  #----
+   if (!is.array(X)){
     stop("X should be an array")
   }
   if (!is.matrix(Y)){
@@ -217,8 +230,9 @@ JEDA_OLS<-function(X,Y,hyp=0){
     print (J_hat)
     stop ("J is singular !")
   }
+  #----
   Beta_hat = Beta(X,Y, J=J_hat)
-  message("Start H Calculation...")
+  print("Start H Calculation...")
   l=H(X,Y,Beta_hat)
   H_hat=l$H
   moments=l$moments
@@ -257,6 +271,19 @@ diag_na<-function(Arr){
   return(Arr)
 }
 
+
+
+
+
+
+#Case of OLS -----
+
+Beta_0 = matrix(c(1,2,4))
+n=20
+Ui=runif(n,0,1)
+Uj=runif(n,0,1)
+Uij=matrix(runif(n^2,0,1),ncol=n)
+
 f<-function(Ui,Uj,Uij){
   #function f
   c=10
@@ -268,24 +295,13 @@ f<-function(Ui,Uj,Uij){
   # print(Yij)
   return (array(c(Xij,Yij),c(1,length(Beta_0)+1)))
 }
-
-Beta_0 = matrix(c(1,2,4,3)) #constant coefficient included :(cst, X1,X2,G)
-Beta_1 = matrix(c(3,5,7)) #(cst,Z1, Z2)
-Beta_2 = matrix(c(0.2,0.1,0.1)) #(cst,Z1, Z2)
-n=500
-Ui=runif(n,0,1)
-Uj=runif(n,0,1)
-Uij=matrix(runif(n^2,0,1),ncol=n)
-
-
-#Case of OLS -----
-# M=array(0,c(n,n,length(Beta_0)+1))
-# for(i in 1:n){
-#   for(j in 1:n){
-#     M[i,j,]=f(Ui[i],Uj[j],Uij[i,j])
-#   }
-# }
-# M is a n*n*length(Beta_0)+1 array : 
+M=array(0,c(n,n,length(Beta_0)+1))
+for(i in 1:n){
+  for(j in 1:n){
+    M[i,j,]=f(Ui[i],Uj[j],Uij[i,j])
+  }
+}
+# M is a n*n*length(Beta_0)+1 array :
 # Its 2 first dimensions are lines and columns.
 # The last dimension is :
 # (1, X1,...,Xk,Yk) with length 1+length(Beta_0) because Beta_0 includes
@@ -295,34 +311,137 @@ Uij=matrix(runif(n^2,0,1),ncol=n)
 # M=dispatch_na(M, ind=3)
 # M=dispatch_na(M, ind=4)
 
-# M=diag_na(M)
-# Xij=M[,,1:length(Beta_0)]
-# Yij=M[,,length(Beta_0)+1]
-# #transforming data to give them to lm()
-# x1=as.vector(Xij[,,2])
-# x2=as.vector(Xij[,,3])
-# x=matrix(c(x1,x2),ncol=2)
-# y=matrix(as.vector(Yij[,]))
-# 
-# #Difference with built in
-# reg<-lm(y~x)
-# tests=coeftest(reg, vcov = vcovHC(reg, type = "HC0")) #performs tests on the model reg with the variance matrix calculated with vcovHC
-# JEDA<-JEDA_OLS(Xij,Yij)
+M=diag_na(M)
+Xij=M[,,1:length(Beta_0)]
+Yij=M[,,length(Beta_0)+1]
+#transforming data to give them to lm()
+x1=as.vector(Xij[,,2])
+x2=as.vector(Xij[,,3])
+x=matrix(c(x1,x2),ncol=2)
+y=matrix(as.vector(Yij[,]))
+
+#Difference with built in
+reg<-lm(y~x)
+tests=coeftest(reg, vcov = vcovHC(reg, type = "HC0")) #performs tests on the model reg with the variance matrix calculated with vcovHC
+JEDA<-JEDA_OLS(Xij,Yij)
 
 #Case of 2SLS----
+
+Betas_1SLS<-function(G,Z,X){
+  #----
+  if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2])){
+    stop('\nFirst 2 dimensions of X,Z and G should be the same')
+  }
+
+  if (!dim(X)[1]==dim(X)[2]){
+    stop('Arrays should be square in their first 2 dimensions ')
+  }
+  m=matrix(1,dim(G)[1],dim(G)[2])
+  if(any(G[,,1]!=m)){
+    stop('Array G should contain the vector 1 in first position')
+  }
+  #----
+  d=dim(X)[3]
+  GZ=array(0,c(dim(X)[1:2],dim(Z)[3]+dim(G)[3]))
+  GZ[,,1:dim(G)[3]]=G
+  GZ[,,(1+dim(G)[3]):(dim(G)[3]+dim(Z)[3])]=Z
+  
+  Betas = matrix(0,dim(Z)[3]+dim(G)[3],d)
+  J_hat=J(GZ)
+  for (i in 1:d){
+    print(paste('Regression on IV and G number :',i ))
+    beta_i=Beta(Y=X[,,i],X=GZ, J_hat = J_hat)
+    Betas[,i]=beta_i
+  }
+  return (Betas)
+}
+
+
+D_SLS<-function(G,Z,X,first_Betas=NULL){
+  #----
+  if (!is.null(first_Betas)){
+    if(is.matrix(first_Betas)){
+      if (!(all((dim(first_Betas)==c(dim(G)[3]+dim(Z)[3],dim(X)[3]))))){
+        mess=paste("first_Betas given has dimension : ", dim(first_Betas)[1],dim(first_Betas)[2],"\n function expected", dim(G)[3]+dim(Z)[3],dim(X)[3])
+        stop(mess)
+      }
+    }
+    else {stop('first_Betas is not a matrix !')}
+    
+  }
+  if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2])){
+    stop('\nFirst 2 dimensions of X,Z and G should be the same')
+  }
+
+  if (!dim(X)[1]==dim(X)[2]){
+    stop('Arrays should be square in their first 2 dimensions ')
+  }
+  if (!dim(X)[1]==dim(X)[2]){
+    stop('Arrays should be square in their first 2 dimensions ')
+  }
+  m=matrix(1,dim(G)[1],dim(G)[2])
+  if(any(G[,,1]!=m)){
+    stop('Array G should contain the vector 1 in first position')
+  }
+  m=matrix(1,dim(G)[1],dim(G)[2])
+  #----
+  if (is.null(first_Betas)){
+    first_Betas = Betas_1SLS(Z,G,X)
+  }
+  GZ = array(0,dim=c(dim(Z)[1:2],dim(Z)[3]+dim(G)[3]))
+  GZ[,,1:dim(G)[3]]=G
+  GZ[,,(1+dim(G)[3]):(dim(G)[3]+dim(Z)[3])]=Z
+  D=array(0, dim(X))
+  for(i in 1:dim(X)[3]){
+    b=first_Betas[,i]
+    print('b :')
+    print(b)
+    D[,,i] = apply(GZ,MARGIN=c(1,2), FUN =(function(x){t(x)%*%b}))
+    print('sd(X) :')
+    print(sd(X[,,i]))
+    print('sd(D) :')
+    print(sd(D[,,i]))
+    
+    print(sd(D[,,i],na.rm=TRUE)/sd(X[,,i],na.rm=TRUE))
+  }
+  return (D)
+}
+
+Beta_2SLS<-function(D,G,Y){
+  #----
+  if (any(dim(G)[1:2]!=dim(D)[1:2])){
+    stop("First 2 dimensions of G and D should be equal")
+  }
+  #----
+  GD=array(0,c(dim(G)[1:2],dim(G)[3]+dim(D)[3]))
+  GD[,,1:dim(G)[3]]=G
+  GD[,,(1+dim(G)[3]):(dim(G)[3]+dim(D)[3])]=D
+  B=Beta(GD,Y)
+  return (B)
+}
+
+
+Beta_0 = matrix(c(1,2,4,8)) #constant coefficient included :(cst, X1,X2,G)
+Beta_1 = matrix(c(3,5,7)) #(cst,Z1, Z2)
+Beta_2 = matrix(c(0.2,0.1,0.1)) #(cst,Z1, Z2)
+n=20
+Ui=runif(n,0,1)
+Uj=runif(n,0,1)
+Uij=matrix(runif(n^2,0,1),ncol=n)
+
 g<-function(Ui,Uj,Uij){
-  #function f
+  #function that generates the X, IVs Z and G sth cov (X,G)=0 to make 1SLS verification easier.
   c=10
   e=0.1
-  G_factor=runif(1,1,10)
+  G_factor=runif(1,0.2,40)
   eps= rnorm(2,0,1.5)
   Z=matrix(c(1,Ui,Uj)) #constant added here
-  G=G_factor*Uj
+  G=G_factor*1/sqrt(2+Uj*Uj) #induces included variable bias
   # print(Xij)
-  epsilon=-(Ui+Uj)*c/2+Ui*Uj*c+c/4-e/2+e*Uij #orthogonal to Ui and Uj
-  X1=t(Beta_1)%*%Z+eps[1]
-  X2=t(Beta_2)%*%Z-2*e*eps[2]
-  Y =t(Beta_0)%*%matrix(c(1,X1,X2,G)) + epsilon
+  epsilon=-100*(Ui+Uj)*c/2+Ui*Uj*c+c/4-e/2+e*Uij #orthogonal to Ui and Uj and correlated for common i or j
+  X1=t(Beta_1)%*%Z+eps[1]+epsilon/2 #correlated to epsilon but can be regressed on Z
+  X2=t(Beta_2)%*%Z+eps[2]+epsilon/2
+  Y =t(Beta_0)%*%matrix(c(1,G,X1,X2))# + epsilon
   # print(Yij)
   return (array(c(Y,X1,X2,1,G,Z[2:3]),c(1,7), dimnames=list("Obs",c('Y','X1','X2','cst','G','Z1','Z2'))))
 }
@@ -333,43 +452,28 @@ for(i in 1:n){
     A[i,j,]=g(Ui[i],Uj[j],Uij[i,j])
   }
 }
-A=dispatch_na(A)
-A=diag_na(A)
+# A=dispatch_na(A)
+# A=diag_na(A)
 Yij  = A[,,1]
 Xkij = A[,,2:3]
 Gkij = A[,,4:5]
 Zkij = A[,,6:7]
 
-Betas_1SLS<-function(X,Z,G){
-  if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2])){
-    stop('\nFirst 2 dimensions of X,Z and G should be the same')
-  }
+first_Betas2=Betas_1SLS(Gkij,Zkij,Xkij) #checked : Betas work
+first_Betas2
 
-  if (!dim(X)[1]==dim(X)[2]){
-    stop('Arrays should be square in their first 2 dimensions ')
-  }
-  m=matrix(1,dim(G)[1],dim(G)[2])
-  if(any(G[,,1]!=m)){
-    stop('Array G should contain the vector 1 ')
-  }
-  
-  d=dim(X)[3]
-  D=array(0,dim(X)) #D will replace X
-  GZ=array(0,c(dim(X)[1:2],dim(Z)[3]+dim(G)[3]))
-  GZ[,,1:dim(G)[3]]=G
-  GZ[,,(1+dim(G)[3]):(dim(G)[3]+dim(Z)[3])]=Z
-  
-  Betas = matrix(0,dim(Z)[3]+dim(G)[3],d)
-  J_hat=J(GZ)
-  for (i in 1:d){
-    print(paste('Regression on IV and G number :',i ))
-    beta_i=Beta(X=GZ,Y=X[,,i], J_hat = J_hat)
-    Betas[,i]=beta_i
-  }
-  return (Betas)
-}
+D=D_SLS(Gkij,Zkij,Xkij, first_Betas = first_Betas)
+mean((D[,,2]-Xkij[,,2])^2, na.rm=TRUE)
 
-first_Betas=Betas_1SLS(Xkij,Zkij,Gkij) #checked : Betas work
+M=array(c(Gkij,Xkij),dim=c(n,n,4))
+M2=array(c(Gkij,D),dim=c(n,n,4))
+
+B2SLS = Beta_2SLS(D,Gkij,Yij)
+B2SLS
+Beta2(M,Yij)
+Beta2(M2,Yij)
+
+
 
 
 
