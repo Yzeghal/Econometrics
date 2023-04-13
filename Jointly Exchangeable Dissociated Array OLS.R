@@ -5,7 +5,7 @@ library(lmtest) #to perform test with specified indications with coeftest
 library(sandwich) # to compute heteroscedasticity robust tests : vcovHC(reg, type = "HC0")
 
 
-#Computations 
+#Computations ----
 spot_na<-function(A){
   any(is.na(A))
 }
@@ -234,7 +234,7 @@ JEDA_OLS<-function(X,Y,hyp=0){
   return(values)
 }
 
-
+#Data generation----
 #generating data as jointly exchangeable dissociated arrays.
 
 dispatch_na<-function(Arr,ind=2){
@@ -269,44 +269,107 @@ f<-function(Ui,Uj,Uij){
   return (array(c(Xij,Yij),c(1,length(Beta_0)+1)))
 }
 
-Beta_0 = matrix(c(1,2,4)) #constant coefficient included
-n=20
+Beta_0 = matrix(c(1,2,4,3)) #constant coefficient included :(cst, X1,X2,G)
+Beta_1 = matrix(c(3,5,7)) #(cst,Z1, Z2)
+Beta_2 = matrix(c(0.2,0.1,0.1)) #(cst,Z1, Z2)
+n=500
 Ui=runif(n,0,1)
 Uj=runif(n,0,1)
 Uij=matrix(runif(n^2,0,1),ncol=n)
 
-M=array(0,c(n,n,length(Beta_0)+1))
 
-for(i in 1:n){
-  for(j in 1:n){
-    M[i,j,]=f(Ui[i],Uj[j],Uij[i,j])
-  }
-}
-
-# M=dispatch_na(M, ind=2)
-# M=dispatch_na(M, ind=3)
-# M=dispatch_na(M, ind=4)
-
-M=diag_na(M)
-Xij=M[,,1:length(Beta_0)]
-Yij=M[,,length(Beta_0)+1]
-
+#Case of OLS -----
+# M=array(0,c(n,n,length(Beta_0)+1))
+# for(i in 1:n){
+#   for(j in 1:n){
+#     M[i,j,]=f(Ui[i],Uj[j],Uij[i,j])
+#   }
+# }
 # M is a n*n*length(Beta_0)+1 array : 
 # Its 2 first dimensions are lines and columns.
 # The last dimension is :
 # (1, X1,...,Xk,Yk) with length 1+length(Beta_0) because Beta_0 includes
 # a constant coef
 
-#transforming data to give them to lm()
-x1=as.vector(Xij[,,2])
-x2=as.vector(Xij[,,3])
-x=matrix(c(x1,x2),ncol=2)
-y=matrix(as.vector(Yij[,]))
+# M=dispatch_na(M, ind=2)
+# M=dispatch_na(M, ind=3)
+# M=dispatch_na(M, ind=4)
 
-#Difference with built in
-reg<-lm(y~x)
-tests=coeftest(reg, vcov = vcovHC(reg, type = "HC0")) #performs tests on the model reg with the variance matrix calculated with vcovHC
+# M=diag_na(M)
+# Xij=M[,,1:length(Beta_0)]
+# Yij=M[,,length(Beta_0)+1]
+# #transforming data to give them to lm()
+# x1=as.vector(Xij[,,2])
+# x2=as.vector(Xij[,,3])
+# x=matrix(c(x1,x2),ncol=2)
+# y=matrix(as.vector(Yij[,]))
+# 
+# #Difference with built in
+# reg<-lm(y~x)
+# tests=coeftest(reg, vcov = vcovHC(reg, type = "HC0")) #performs tests on the model reg with the variance matrix calculated with vcovHC
+# JEDA<-JEDA_OLS(Xij,Yij)
 
-JEDA<-JEDA_OLS(Xij,Yij)
+#Case of 2SLS----
+g<-function(Ui,Uj,Uij){
+  #function f
+  c=10
+  e=0.1
+  G_factor=runif(1,1,10)
+  eps= rnorm(2,0,1.5)
+  Z=matrix(c(1,Ui,Uj)) #constant added here
+  G=G_factor*Uj
+  # print(Xij)
+  epsilon=-(Ui+Uj)*c/2+Ui*Uj*c+c/4-e/2+e*Uij #orthogonal to Ui and Uj
+  X1=t(Beta_1)%*%Z+eps[1]
+  X2=t(Beta_2)%*%Z-2*e*eps[2]
+  Y =t(Beta_0)%*%matrix(c(1,X1,X2,G)) + epsilon
+  # print(Yij)
+  return (array(c(Y,X1,X2,1,G,Z[2:3]),c(1,7), dimnames=list("Obs",c('Y','X1','X2','cst','G','Z1','Z2'))))
+}
+
+A=array(0,c(n,n,7),dimnames=list(rep("",n),rep("",n),c('Y','X1','X2','cst','G','Z1','Z2')))
+for(i in 1:n){
+  for(j in 1:n){
+    A[i,j,]=g(Ui[i],Uj[j],Uij[i,j])
+  }
+}
+A=dispatch_na(A)
+A=diag_na(A)
+Yij  = A[,,1]
+Xkij = A[,,2:3]
+Gkij = A[,,4:5]
+Zkij = A[,,6:7]
+
+Betas_1SLS<-function(X,Z,G){
+  if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2])){
+    stop('\nFirst 2 dimensions of X,Z and G should be the same')
+  }
+
+  if (!dim(X)[1]==dim(X)[2]){
+    stop('Arrays should be square in their first 2 dimensions ')
+  }
+  m=matrix(1,dim(G)[1],dim(G)[2])
+  if(any(G[,,1]!=m)){
+    stop('Array G should contain the vector 1 ')
+  }
+  
+  d=dim(X)[3]
+  D=array(0,dim(X)) #D will replace X
+  GZ=array(0,c(dim(X)[1:2],dim(Z)[3]+dim(G)[3]))
+  GZ[,,1:dim(G)[3]]=G
+  GZ[,,(1+dim(G)[3]):(dim(G)[3]+dim(Z)[3])]=Z
+  
+  Betas = matrix(0,dim(Z)[3]+dim(G)[3],d)
+  J_hat=J(GZ)
+  for (i in 1:d){
+    print(paste('Regression on IV and G number :',i ))
+    beta_i=Beta(X=GZ,Y=X[,,i], J_hat = J_hat)
+    Betas[,i]=beta_i
+  }
+  return (Betas)
+}
+
+first_Betas=Betas_1SLS(Xkij,Zkij,Gkij) #checked : Betas work
+
 
 
