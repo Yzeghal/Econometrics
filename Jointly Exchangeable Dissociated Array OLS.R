@@ -2,8 +2,9 @@
 library(matrixcalc) #for matrix inversion and others
 library(MASS)#to generate multivariate data
 library(lmtest) #to perform test with specified indications with coeftest
-library(sandwich) # to compute heteroscedasticity robust tests : vcovHC(reg, type = "HC0")
+library(sandwich) # to compute heteroscedasticity robust tests : vcovHC(reg, type = "HC0") to have variance covariance matrix calculated with the sandwich formula.
 
+#source("C:/Users/tayoy/Documents/GitHub/Econometrics/Basic Regression.R", local = b <- new.env())
 
 #Computations ----
 spot_na<-function(A){
@@ -13,11 +14,13 @@ map_na<-function(Arr){
   apply(Arr,c(1,2),spot_na) #applies spot_na to all dimensions having dimensions 1 and 2 fixed.
 }
 
-J<-function(X){
+J<-function(X,Y){ #returnns J NORMALISED by nuber of observations used in the sum
   if (dim(X)[1]!=dim(X)[2]){
     stop("Matrix X is not square !")
   }
-  not_na=!map_na(X)
+  not_nax=!map_na(X)
+  not_nay=!map_na(Y)
+  not_na=not_nax&not_nay
   nb_obs=sum(not_na)
   M=matrix(0,dim(X)[3],dim(X)[3])
   
@@ -69,6 +72,9 @@ Beta2<-function(X,Y){
 
 Beta<-function(X,Y, J_hat=NULL){ #Does the match with lm results (which simply drops all observations) and seems more precise...
   #add H_hat in argument if it was already calculated.
+  #Safety tests
+  #----
+  
   if (any(dim(Y)!=dim(X)[1:2])){
     messageX = paste("2 first dimensions of X", dim(X)[1], dim(X)[2])
     messageY = paste("\n 2 first dimensions of Y", dim(Y)[1], dim(Y)[2])
@@ -77,6 +83,7 @@ Beta<-function(X,Y, J_hat=NULL){ #Does the match with lm results (which simply d
   if (dim(X)[1]!=dim(X)[2]){
     stop("Matrix X is not square !")
   }
+  #----
   not_naX=!map_na(X)
   not_naY=!map_na(Y)
   viable = not_naX&not_naY
@@ -94,7 +101,7 @@ Beta<-function(X,Y, J_hat=NULL){ #Does the match with lm results (which simply d
       print('J given in argument is used')
     }
   else{
-    J_hat=J(X)
+    J_hat=J(X,Y)
   }
   #print(J_hat)
   second_term = matrix(0,dim(X)[3],1)
@@ -111,15 +118,20 @@ Beta<-function(X,Y, J_hat=NULL){ #Does the match with lm results (which simply d
   matrix.inverse(J_hat)%*%second_term
 }
 
+estimate <-function(X,Beta_hat){
+  apply(X,MARGIN=c(1,2), FUN =(function(x){t(x)%*%Beta_hat}))
+}
+
 eps<-function(X,Y,b){
-  Y-apply(X,MARGIN=c(1,2), FUN =(function(x){t(x)%*%b}))
+  ep=Y-estimate(X,b)
+  return (ep)
 }
 
 last_multip<-function(Arr, d=-1){
   Arr[1:d-1]*Arr[d]
 }
 
-H<-function(X,Y,b){
+H_basic_OLS<-function(X,Y,b){
   #returns a list(H, moments) that contains H and moments that should be equal to 0
   #Safety tests
   #----
@@ -140,7 +152,79 @@ H<-function(X,Y,b){
   ep=eps(X,Y,b)
   not_naX=!map_na(X)
   not_naY=!map_na(Y)
-  viable = not_naX&not_naY
+  viable = not_naX&not_naY #ep is already NA if X or Y is NA
+  #tests that diagonal is NA
+  if (sum(diag(viable))!=0){
+    warn=paste(sum(diag(viable)),"terms in the diagonal. Should be 0")
+    warning(warn)
+  }
+  #----
+  Xeps = array(0,c(nx,nx,d+1))
+  Xeps[,,1:d]=X
+  Xeps[,,d+1]=ep
+  Xeps=apply(Xeps,MARGIN=c(1,2), last_multip, d=d+1)
+  Xeps=aperm(Xeps,c(2,3,1))
+  #all(!map_na(Xeps)==viable) #test if all NAs are at the right place
+  #moment = apply(Xeps,MARGIN= 3, FUN= sum, na.rm=TRUE) # Moment condition of least squares ~1e-12 to have an idea of calculation precision loss.
+  not_zeros = sum(viable) #counts the number of not calculated terms in the sum over i.
+  #----
+  eXXe = apply(Xeps,MARGIN = c(1,2), FUN=function(x){
+    m=ifelse(any(is.na(x))*matrix(1,d,d),matrix(NA,d,d),matrix(x)%*%t(x))
+    # yields d*d matrices taken as d^2 length vectors. Does not change anything for the sum and is re-matrixed after.
+    print('X :')
+    print(x)
+    print('M :')
+    print(m)
+    return (m)})
+  print(dim(eXXe))
+  #print(all(!map_na(eXXe[1,,])==viable)) #tests that all NA values are placed correctly for index 1 of matrices.
+  mat=apply(eXXe,MARGIN = 1, FUN = sum, na.rm=TRUE) #is a d^2 vector
+  mat=matrix(mat, ncol = d)/not_zeros #normalisation by nb of valid observations
+  print ('nb obs :')
+  print (not_zeros)
+  return(mat)
+ #---- 
+  #heavy unvectorized calculations
+  # for (i in 1:nx){ #Sum over i
+  #   count=0 #counts the number of viable j terms
+  #   V=rep(0,d) #initialize the sum of X_ij*eps_hat_ij
+  #   for (j in 1:nx){
+  #     if (viable[i,j]&&viable[j,i]){
+  #       count=count+1
+  #       V=V+Xeps[i,j,]+Xeps[j,i,]
+  #     }
+  #   }
+  #   if (count==0){
+  #     nb_zeros=nb_zeros+1
+  #   }
+  #   count = max(count,1)
+  #   S=S+(matrix(V)%*%t(V)/count^2)
+  # }
+}
+
+
+H_JEDA<-function(X,Y,b){
+  
+  #Safety tests
+  #----
+  if (any(dim(Y)!=dim(X)[1:2])){
+    messageX = paste("2 first dimensions of X", dim(X)[1], dim(X)[2])
+    messageY = paste("\n 2 first dimensions of Y", dim(Y)[1], dim(Y)[2])
+    stop(paste(messageX,messageY))
+  }
+  if (dim(X)[1]!=dim(X)[2]){
+    stop("Matrix X is not square !")
+  }
+  d=dim(X)[3]
+  nx=dim(X)[1]
+  if (length(b)!=d){
+    stop("b and dim(X)[3] should have the same length")
+  }
+  #----
+  ep=eps(X,Y,b)
+  not_naX=!map_na(X)
+  not_naY=!map_na(Y)
+  viable = not_naX&not_naY #ep is already NA if X or Y is NA
   #tests that diagonal is NA
   if (sum(diag(viable))!=0){
     warn=paste(sum(diag(viable)),"terms in the diagonal. Should be 0")
@@ -152,7 +236,7 @@ H<-function(X,Y,b){
   Xeps=apply(Xeps,MARGIN=c(1,2), last_multip, d=d+1)
   Xeps=aperm(Xeps,c(2,3,1))
   #all(!map_na(Xeps)==viable) #test if all NAs are at the right place
-  moment = apply(Xeps,MARGIN= 3, FUN= sum, na.rm=TRUE) # Moment condition of least squares ~1e-12 to have an idea of calculation precision loss.
+  #moment = apply(Xeps,MARGIN= 3, FUN= sum, na.rm=TRUE) # Moment condition of least squares ~1e-12 to have an idea of calculation precision loss.
   nb_zeros = 0 #counts the number of not calculated terms in the sum over i.
   S=matrix(0,d,d)
   #heavy unvectorized calculations
@@ -173,14 +257,12 @@ H<-function(X,Y,b){
   }
   
   S=S/(nx-nb_zeros)
-  return (list(H=S, moments=moment))
+  return (S)
 }
+
 #Small functions for inference
 #----
-estimate<-function(X,Beta_hat){
-  Y_hat=apply(X,MARGIN = c(1,2), FUN=function(x){t(Beta_hat)%*%x})
-  return (Y_hat)
-}
+
 
 asymptotic_variance_OLS<-function(J,H){
   invJ=matrix.inverse(J)
@@ -205,10 +287,13 @@ p_values<-function(Beta_hat, sd ,nx , hyp = 0){
 
 #----
 
-JEDA_OLS<-function(X,Y,hyp=0){
+OLS<-function(X,Y,hyp=0,model="JEDA"){
   #safety tests
   #----
-   if (!is.array(X)){
+  if (!any(model==(c('JEDA','BASIC')))){
+    stop("Model not recognised. Try \'JEDA\' or \'BASIC\' instead.")
+  }
+  if (!is.array(X)){
     stop("X should be an array")
   }
   if (!is.matrix(Y)){
@@ -223,29 +308,33 @@ JEDA_OLS<-function(X,Y,hyp=0){
   if (!is.square.matrix(Y)){
     stop('Y and X should be square ! check dim(X) and dim(Y)')
   }
+  #----
+  not_naX=!map_na(X)
+  not_naY=!map_na(Y)
+  viable = not_naX&not_naY
+  nb_obs = sum(viable)
   message("Start Beta Calculation...")
-  J_hat=J(X)
+  J_hat=J(X,Y)
   if (det(J_hat)==0){
     print('J:')
     print (J_hat)
     stop ("J is singular !")
   }
-  #----
   Beta_hat = Beta(X,Y, J=J_hat)
-  print("Start H Calculation...")
-  l=H(X,Y,Beta_hat)
-  H_hat=l$H
-  moments=l$moments
-  print('Moments')
-  print(moments)
+  if (model == "JEDA"){
+    H_hat=H_JEDA(X,Y,Beta_hat)
+  }
+  if (model == "BASIC"){
+    H_hat=H_basic_OLS(X,Y,Beta_hat)
+  }
   asvar=asymptotic_variance_OLS(J=J_hat, H=H_hat)
-  std=standard_errors(asvar,dimx[1])
+  std=standard_errors(asvar,nb_obs)
   ts=student_t(Beta_hat,std,hyp = hyp)
-  p_val=p_values(Beta_hat, std ,dimx[1] , hyp = 0)
+  p_val=p_values(Beta_hat, std ,nb_obs , hyp = 0)
   if (sum(abs(hyp))==0){hyp = rep(0,length(Beta_hat))}
   values = matrix(c(Beta_hat,std,ts,p_val,hyp), ncol=5)
   colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values', 'H0_hyp')
-  return(values)
+  return(list (coefs=values, var=asvar))
 }
 
 #Data generation----
@@ -272,14 +361,10 @@ diag_na<-function(Arr){
 }
 
 
-
-
-
-
 #Case of OLS -----
 
 Beta_0 = matrix(c(1,2,4))
-n=20
+n=50
 Ui=runif(n,0,1)
 Uj=runif(n,0,1)
 Uij=matrix(runif(n^2,0,1),ncol=n)
@@ -307,11 +392,11 @@ for(i in 1:n){
 # (1, X1,...,Xk,Yk) with length 1+length(Beta_0) because Beta_0 includes
 # a constant coef
 
-# M=dispatch_na(M, ind=2)
-# M=dispatch_na(M, ind=3)
-# M=dispatch_na(M, ind=4)
+M=dispatch_na(M, ind=2)
+M=dispatch_na(M, ind=3)
+M=dispatch_na(M, ind=4)
 
-M=diag_na(M)
+# M=diag_na(M)
 Xij=M[,,1:length(Beta_0)]
 Yij=M[,,length(Beta_0)+1]
 #transforming data to give them to lm()
@@ -322,8 +407,15 @@ y=matrix(as.vector(Yij[,]))
 
 #Difference with built in
 reg<-lm(y~x)
+Beta_hat=reg$coefficients
 tests=coeftest(reg, vcov = vcovHC(reg, type = "HC0")) #performs tests on the model reg with the variance matrix calculated with vcovHC
-JEDA<-JEDA_OLS(Xij,Yij)
+
+
+JEDA<-OLS(Xij,Yij, model="JEDA")
+LS<-OLS(Xij,Yij, model="BASIC")
+tests
+JEDA
+LS
 
 #Case of 2SLS----
 

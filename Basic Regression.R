@@ -70,6 +70,7 @@ asymptotic_variance<-function(X,Y){
   sandwich_term= matrix.inverse(t(X)%*%X)
   #print(dim(sandwich_term))
   var = sandwich_term %*% middle_term %*% sandwich_term
+  return(list(var=var, H=middle_term))
 }
 
 standard_errors<-function (var,nx){
@@ -102,7 +103,7 @@ reg_OLS<-function(X,Y,hyp=0){
   Beta_hat=coefs(X,Y)
   Y_hat=estimate(X,Beta_hat)
   eps_hat=Y-Y_hat
-  asvar=asymptotic_variance(X,Y)
+  asvar=asymptotic_variance(X,Y)$var
   se=standard_errors(asvar,nx)
   t=student_t(Beta_hat,se,hyp)
   p=p_values(Beta_hat,se,nx,hyp)
@@ -110,7 +111,7 @@ reg_OLS<-function(X,Y,hyp=0){
   if (sum(abs(hyp))==0){hyp = rep(0,length(Beta_hat))}
   values = matrix(c(Beta_hat,se,t,p,hyp), ncol=5)
   colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values', 'H0_hyp')
-  return(list('R2'=R2, 'values' = values))
+  return(list('R2'=R2, 'coefs' = values, var=asvar))
 }
 
 #homemade model fitting
