@@ -2,8 +2,9 @@
 library(matrixcalc) #for matrix inversion and others
 library(MASS)#to generate multivariate data
 library(lmtest) #to perform test with specified indications with coeftest
-library(sandwich) # to compute heteroscedasticity robust tests : vcovHC(reg, type = "HC0") to have variance covariance matrix calculated with the sandwich formula.
-
+library(sandwich) # to compute heteroscedasticityvariance-covariance.
+# Use vcovHC(reg, type = "HC0") to have variance covariance matrix calculated with the sandwich formula.
+library(aod) #contains functions such that wald test, whiwh we use in 2SLS.
 #source("C:/Users/tayoy/Documents/GitHub/Econometrics/Basic Regression.R", local = b <- new.env())
 
 #Computations ----
@@ -171,10 +172,6 @@ H_basic_OLS<-function(X,Y,b){
   eXXe = apply(Xeps,MARGIN = c(1,2), FUN=function(x){
     m=ifelse(any(is.na(x))*matrix(1,d,d),matrix(NA,d,d),matrix(x)%*%t(x))
     # yields d*d matrices taken as d^2 length vectors. Does not change anything for the sum and is re-matrixed after.
-    print('X :')
-    print(x)
-    print('M :')
-    print(m)
     return (m)})
   print(dim(eXXe))
   #print(all(!map_na(eXXe[1,,])==viable)) #tests that all NA values are placed correctly for index 1 of matrices.
@@ -334,7 +331,8 @@ OLS<-function(X,Y,hyp=0,model="JEDA"){
   if (sum(abs(hyp))==0){hyp = rep(0,length(Beta_hat))}
   values = matrix(c(Beta_hat,std,ts,p_val,hyp), ncol=5)
   colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values', 'H0_hyp')
-  return(list (coefs=values, var=asvar))
+  F_test = wald.test(Sigma=asvar/nb_obs, b=Beta_hat ,df=length(Beta_hat), L=diag(length(Beta_hat)))$result$Ftest[1]
+  return(list ('coefs'=values, 'var'=asvar, 'F'=F_test))
 }
 
 #Data generation----
@@ -392,9 +390,9 @@ for(i in 1:n){
 # (1, X1,...,Xk,Yk) with length 1+length(Beta_0) because Beta_0 includes
 # a constant coef
 
-M=dispatch_na(M, ind=2)
-M=dispatch_na(M, ind=3)
-M=dispatch_na(M, ind=4)
+# M=dispatch_na(M, ind=2)
+# M=dispatch_na(M, ind=3)
+# M=dispatch_na(M, ind=4)
 
 # M=diag_na(M)
 Xij=M[,,1:length(Beta_0)]
@@ -416,6 +414,10 @@ LS<-OLS(Xij,Yij, model="BASIC")
 tests
 JEDA
 LS
+F_=wald.test(vcovHC(reg, type="HC0"), b=Beta_hat,df=3, L=diag(3))$result$Ftest[1]
+F_
+
+
 
 #Case of 2SLS----
 
