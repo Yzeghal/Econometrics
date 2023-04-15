@@ -30,7 +30,6 @@ J<-function(X,Y){ #returnns J NORMALISED by nuber of observations used in the su
       if (not_na[i,j]){
         M=M+matrix(X[i,j,])%*%t(matrix(X[i,j,]))
       }
-      
     }
   }
   M=M/nb_obs
@@ -75,7 +74,6 @@ Beta<-function(X,Y, J_hat=NULL){ #Does the match with lm results (which simply d
   #add H_hat in argument if it was already calculated.
   #Safety tests
   #----
-  
   if (any(dim(Y)!=dim(X)[1:2])){
     messageX = paste("2 first dimensions of X", dim(X)[1], dim(X)[2])
     messageY = paste("\n 2 first dimensions of Y", dim(Y)[1], dim(Y)[2])
@@ -514,11 +512,17 @@ FS_OLS<-function(G,Z,X){
   return(list('Betas'=Betas,'R2'=R2,'F'=F_))
 }
 
-reg1=FS_OLS(G,Z,X)
-reg1
-
-D_SLS<-function(G,Z,X,first_Betas=NULL){
+predIV<-function(G,Z,X,first_Betas=NULL){
   #----
+  if(is.matrix(G)){
+    G=array(G,dim=c(dim(G),1))
+  }
+  if(is.matrix(Z)){
+    Z=array(Z,dim=c(dim(Z),1))
+  }
+  if(is.matrix(X)){
+    X=array(X,dim=c(dim(X),1))
+  }
   if (!is.null(first_Betas)){
     if(is.matrix(first_Betas)){
       if (!(all((dim(first_Betas)==c(dim(G)[3]+dim(Z)[3],dim(X)[3]))))){
@@ -538,74 +542,29 @@ D_SLS<-function(G,Z,X,first_Betas=NULL){
   if(any(G[,,1]!=m)){
     stop('Array G should contain the vector 1 in first position')
   }
-  m=matrix(1,dim(G)[1],dim(G)[2])
   #----
   if (is.null(first_Betas)){
-    first_Betas = Betas_1SLS(Z,G,X)
+    first_Betas = FS_OLS(G,Z,X)$Betas
   }
-  GZ = array(0,dim=c(dim(Z)[1:2],dim(Z)[3]+dim(G)[3]))
-  GZ[,,1:dim(G)[3]]=G
-  GZ[,,(1+dim(G)[3]):(dim(G)[3]+dim(Z)[3])]=Z
-  D=array(0, dim(X))
-  for(i in 1:dim(X)[3]){
-    b=first_Betas[,i]
-    print('b :')
-    print(b)
-    D[,,i] = apply(GZ,MARGIN=c(1,2), FUN =(function(x){t(x)%*%b}))
-    print('sd(X) :')
-    print(sd(X[,,i]))
-    print('sd(D) :')
-    print(sd(D[,,i]))
-    
-    print(sd(D[,,i],na.rm=TRUE)/sd(X[,,i],na.rm=TRUE))
+  GZ=array(c(G,Z),dim=c(dim(G)[1:2],dim(Z)[3]+dim(G)[3]))
+  D=array(0,dim=dim(X))
+  for (i in 1:dim(X)[3]){
+    D[,,i]=estimate(GZ,first_Betas[,i])
   }
   return (D)
 }
 
-Beta_2SLS<-function(D,G,Y){
-  #----
-  if (any(dim(G)[1:2]!=dim(D)[1:2])){
-    stop("First 2 dimensions of G and D should be equal")
-  }
-  #----
-  GD=array(0,c(dim(G)[1:2],dim(G)[3]+dim(D)[3]))
-  GD[,,1:dim(G)[3]]=G
-  GD[,,(1+dim(G)[3]):(dim(G)[3]+dim(D)[3])]=D
-  B=Beta(GD,Y)
-  return (B)
-}
 
+reg1=FS_OLS(G,Z,X) #regression of X on G and Z
+reg1
+B = reg1$Betas
+D=predIV(G,Z,X,first_Betas=B)
+G=array(G,dim=c(dim(G),1))
+GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
+GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #to compare with X
 
-
-
-A=array(0,c(n,n,7),dimnames=list(rep("",n),rep("",n),c('Y','X1','X2','cst','G','Z1','Z2')))
-for(i in 1:n){
-  for(j in 1:n){
-    A[i,j,]=g(Ui[i],Uj[j],Uij[i,j])
-  }
-}
-# A=dispatch_na(A)
-# A=diag_na(A)
-Yij  = A[,,1]
-Xkij = A[,,2:3]
-Gkij = A[,,4:5]
-Zkij = A[,,6:7]
-
-first_Betas2=Betas_1SLS(Gkij,Zkij,Xkij) #checked : Betas work
-first_Betas2
-
-D=D_SLS(Gkij,Zkij,Xkij, first_Betas = first_Betas)
-mean((D[,,2]-Xkij[,,2])^2, na.rm=TRUE)
-
-M=array(c(Gkij,Xkij),dim=c(n,n,4))
-M2=array(c(Gkij,D),dim=c(n,n,4))
-
-B2SLS = Beta_2SLS(D,Gkij,Yij)
-B2SLS
-Beta2(M,Yij)
-Beta2(M2,Yij)
-
-
+reg2=OLS(GD,Y) #regression of Y on G and D
+noIV<-OLS(GX,Y)
 
 
 
