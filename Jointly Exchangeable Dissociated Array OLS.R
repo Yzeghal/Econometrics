@@ -342,7 +342,7 @@ OLS<-function(X,Y,hyp=0,model="JEDA"){
   return(list ('coefs'=values, 'var'=asvar, 'F'=F_test,"R2"= R2))
 }
 
-#Data generation----
+#NAs dispatchers----
 #generating data as jointly exchangeable dissociated arrays.
 
 dispatch_na<-function(Arr,ind=2){
@@ -434,36 +434,64 @@ F_
 
 
 #Case of 2SLS----
+Beta_0 = matrix(c(1,2,4,8)) #constant coefficient included :(cst, X1,X2,G)
+Beta_1 = matrix(c(3,5,7)) #(cst,Z1, Z2)
+Beta_2 = matrix(c(0.2,0.1,0.1)) #(cst,Z1, Z2)
+n=100
+Ui=runif(n,0,1)
+Uj=runif(n,0,1)
+Uij=matrix(runif(n^2,0,1),ncol=n)
 
-Betas_1SLS<-function(G,Z,X){
-  #----
-  if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2])){
-    stop('\nFirst 2 dimensions of X,Z and G should be the same')
-  }
+g<-function(UiUjUij){
+  #UiUjUij is a vector c(Ui,Uj,Uij)
+  #function that generates the X, IVs Z and G sth cov (X,G)=0 to make 1SLS verification easier.
+  Ui=UiUjUij[1]
+  Uj=UiUjUij[2]
+  Uij=UiUjUij[3]
+  p<-2*pi
+  N=rnorm(1,1,1)
+  eps1 = Ui*cos(p*Uj) #orthogonal to Ui, Uj but sd( |Ui) increases with Ui.
+  eps2 = Uj*cos(p*Ui)
+  Z1=Ui
+  Z2=Uj
+  X1=t(Beta_1)%*%c(1,Z1,Z2)+eps1
+  X2=t(Beta_2)%*%c(1,Z1,Z2)+eps2
+  r=c(X1,X2,1,Z1,Z2)
+  return (r)
+} 
 
-  if (!dim(X)[1]==dim(X)[2]){
-    stop('Arrays should be square in their first 2 dimensions ')
+M=array(0,c(n,n,3))
+M[,,1] = matrix(rep(Ui,n),c(n,n), byrow=FALSE) 
+M[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
+#M[,,3] = Uij
+
+A = apply(M,MARGIN = c(1,2),FUN = g)
+
+A=aperm(A,c(2,3,1))
+
+X = A[,,1:2]
+G = array(A[,,3],dim=c(n,n,1))
+Z = A[,,4:5]
+
+FS_OLS<-function(G,Z,X){
+  #G contains control variables
+  #Z contains IV
+  #X contains the variables that will be regressed on G and Z
+  Betas = matrix(0,dim(G)[3]+dim(Z)[3],dim(X)[3])
+  R2=rep(0,dim(X)[3])
+  F_=rep(0,dim(X)[3])
+  GZ=array(c(G,Z),dim=c(dim(G)[1:2], dim(G)[3]+dim(Z)[3]))
+  for (i in 1:dim(X)[3]){
+    reg=OLS(GZ,X[,,i],model = "BASIC") #We only need the R2 and usual F-tests and "BASIC" is vectorised
+    Betas[,i]=reg$coefs[,1]
+    R2[i]=reg$R2
+    F_[i]=reg$F
   }
-  m=matrix(1,dim(G)[1],dim(G)[2])
-  if(any(G[,,1]!=m)){
-    stop('Array G should contain the vector 1 in first position')
-  }
-  #----
-  d=dim(X)[3]
-  GZ=array(0,c(dim(X)[1:2],dim(Z)[3]+dim(G)[3]))
-  GZ[,,1:dim(G)[3]]=G
-  GZ[,,(1+dim(G)[3]):(dim(G)[3]+dim(Z)[3])]=Z
-  
-  Betas = matrix(0,dim(Z)[3]+dim(G)[3],d)
-  J_hat=J(GZ)
-  for (i in 1:d){
-    print(paste('Regression on IV and G number :',i ))
-    beta_i=Beta(Y=X[,,i],X=GZ, J_hat = J_hat)
-    Betas[,i]=beta_i
-  }
-  return (Betas)
+  return(list('Betas'=Betas,'R2'=R2,'F'=F_))
 }
 
+reg1=FS_OLS(G,Z,X)
+reg1
 
 D_SLS<-function(G,Z,X,first_Betas=NULL){
   #----
@@ -529,40 +557,7 @@ Beta_2SLS<-function(D,G,Y){
 }
 
 
-Beta_0 = matrix(c(1,2,4,8)) #constant coefficient included :(cst, X1,X2,G)
-Beta_1 = matrix(c(3,5,7)) #(cst,Z1, Z2)
-Beta_2 = matrix(c(0.2,0.1,0.1)) #(cst,Z1, Z2)
-n=10
-Ui=runif(n,0,1)
-Uj=runif(n,0,1)
-Uij=matrix(runif(n^2,0,1),ncol=n)
 
-g<-function(UiUjUij){
-  #UiUjUij is a vector c(Ui,Uj,Uij)
-  #function that generates the X, IVs Z and G sth cov (X,G)=0 to make 1SLS verification easier.
-  Ui=UiUjUij[1]
-  Uj=UiUjUij[2]
-  Uij=UiUjUij[3]
-  p<-2*pi
-  a1=1
-  a2=1
-  b1=1
-  b2=1
-  e1=1
-  e2=1
-  N=rnorm(1,1,1)
-  Z1=cos(a1*p*Ui)
-  Z2=cos(a2*p*Uj)
-  r=c(Z1,Z2)
-  return (r)
-} 
-M=array(0,c(n,n,3))
-M[,,1] = matrix(rep(Ui,n),c(n,n), byrow=FALSE) 
-M[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
-M[,,3] = Uij
-
-A = apply(M,MARGIN = c(1,2),FUN = g)
-print(dim(A))
 
 A=array(0,c(n,n,7),dimnames=list(rep("",n),rep("",n),c('Y','X1','X2','cst','G','Z1','Z2')))
 for(i in 1:n){
