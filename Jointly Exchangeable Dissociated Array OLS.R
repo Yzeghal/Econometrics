@@ -374,8 +374,11 @@ Ui=runif(n,0,1)
 Uj=runif(n,0,1)
 Uij=matrix(runif(n^2,0,1),ncol=n)
 
-f<-function(Ui,Uj,Uij){
+f<-function(UiUjUij){
   #function f
+  Ui=UiUjUij[1]
+  Uj=UiUjUij[2]
+  Uij=UiUjUij[3]
   c=10
   e=0.1
   Xij=matrix(c(1,Ui,Uj)) #constant added here
@@ -385,12 +388,15 @@ f<-function(Ui,Uj,Uij){
   # print(Yij)
   return (array(c(Xij,Yij),c(1,length(Beta_0)+1)))
 }
-M=array(0,c(n,n,length(Beta_0)+1))
-for(i in 1:n){
-  for(j in 1:n){
-    M[i,j,]=f(Ui[i],Uj[j],Uij[i,j])
-  }
-}
+N = array(0,c(n,n,3))
+N[,,1] = matrix(rep(Ui,n),c(n,n), byrow=FALSE) 
+N[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
+N[,,3] = Uij
+M = apply(N,MARGIN = c(1,2),FUN = f)
+M=aperm(M,c(2,3,1))
+
+
+
 # M is a n*n*length(Beta_0)+1 array :
 # Its 2 first dimensions are lines and columns.
 # The last dimension is :
@@ -418,11 +424,12 @@ tests=coeftest(reg, vcov = vcovHC(reg, type = "HC0")) #performs tests on the mod
 
 JEDA<-OLS(Xij,Yij, model="JEDA")
 LS<-OLS(Xij,Yij, model="BASIC")
-tests
+
 JEDA
 LS
-# F_=wald.test(vcovHC(reg, type="HC0"), b=Beta_hat,df=3, L=diag(3))$result$Ftest[1]
-# F_
+tests
+F_=wald.test(vcovHC(reg, type="HC0"), b=Beta_hat,df=3, L=diag(3))$result$Ftest[1]
+F_
 
 
 
@@ -525,27 +532,37 @@ Beta_2SLS<-function(D,G,Y){
 Beta_0 = matrix(c(1,2,4,8)) #constant coefficient included :(cst, X1,X2,G)
 Beta_1 = matrix(c(3,5,7)) #(cst,Z1, Z2)
 Beta_2 = matrix(c(0.2,0.1,0.1)) #(cst,Z1, Z2)
-n=20
+n=10
 Ui=runif(n,0,1)
 Uj=runif(n,0,1)
 Uij=matrix(runif(n^2,0,1),ncol=n)
 
-g<-function(Ui,Uj,Uij){
+g<-function(UiUjUij){
+  #UiUjUij is a vector c(Ui,Uj,Uij)
   #function that generates the X, IVs Z and G sth cov (X,G)=0 to make 1SLS verification easier.
-  c=10
-  e=0.1
-  G_factor=runif(1,0.2,40)
-  eps= rnorm(2,0,1.5)
-  Z=matrix(c(1,Ui,Uj)) #constant added here
-  G=G_factor*1/sqrt(2+Uj*Uj) #induces included variable bias
-  # print(Xij)
-  epsilon=-100*(Ui+Uj)*c/2+Ui*Uj*c+c/4-e/2+e*Uij #orthogonal to Ui and Uj and correlated for common i or j
-  X1=t(Beta_1)%*%Z+eps[1]+epsilon/2 #correlated to epsilon but can be regressed on Z
-  X2=t(Beta_2)%*%Z+eps[2]+epsilon/2
-  Y =t(Beta_0)%*%matrix(c(1,G,X1,X2))# + epsilon
-  # print(Yij)
-  return (array(c(Y,X1,X2,1,G,Z[2:3]),c(1,7), dimnames=list("Obs",c('Y','X1','X2','cst','G','Z1','Z2'))))
-}
+  Ui=UiUjUij[1]
+  Uj=UiUjUij[2]
+  Uij=UiUjUij[3]
+  p<-2*pi
+  a1=1
+  a2=1
+  b1=1
+  b2=1
+  e1=1
+  e2=1
+  N=rnorm(1,1,1)
+  Z1=cos(a1*p*Ui)
+  Z2=cos(a2*p*Uj)
+  r=c(Z1,Z2)
+  return (r)
+} 
+M=array(0,c(n,n,3))
+M[,,1] = matrix(rep(Ui,n),c(n,n), byrow=FALSE) 
+M[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
+M[,,3] = Uij
+
+A = apply(M,MARGIN = c(1,2),FUN = g)
+print(dim(A))
 
 A=array(0,c(n,n,7),dimnames=list(rep("",n),rep("",n),c('Y','X1','X2','cst','G','Z1','Z2')))
 for(i in 1:n){
