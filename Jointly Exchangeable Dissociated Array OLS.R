@@ -434,9 +434,9 @@ F_
 
 
 #Case of 2SLS----
-Beta_0 = matrix(c(1,2,4,8)) #constant coefficient included :(cst, X1,X2,G)
+Beta_0 = matrix(c(1,4,8)) #constant coefficient included :(cst, X1,X2,G)
 Beta_1 = matrix(c(3,5,7)) #(cst,Z1, Z2)
-Beta_2 = matrix(c(0.2,0.1,0.1)) #(cst,Z1, Z2)
+Beta_2 = matrix(c(18,9,9)) #(cst,Z1, Z2)
 n=100
 Ui=runif(n,0,1)
 Uj=runif(n,0,1)
@@ -445,38 +445,62 @@ Uij=matrix(runif(n^2,0,1),ncol=n)
 g<-function(UiUjUij){
   #UiUjUij is a vector c(Ui,Uj,Uij)
   #function that generates the X, IVs Z and G sth cov (X,G)=0 to make 1SLS verification easier.
-  Ui=UiUjUij[1]
-  Uj=UiUjUij[2]
-  Uij=UiUjUij[3]
+  U1=UiUjUij[1]
+  U2=UiUjUij[2]
+  U12=UiUjUij[3]
   p<-2*pi
-  N=rnorm(1,1,1)
-  eps1 = Ui*cos(p*Uj) #orthogonal to Ui, Uj but sd( |Ui) increases with Ui.
-  eps2 = Uj*cos(p*Ui)
-  Z1=Ui
-  Z2=Uj
-  X1=t(Beta_1)%*%c(1,Z1,Z2)+eps1
+  N=cos(p*U12) #orthogonal to all other random variables
+  eps1 = U1*cos(p*U2) +U1*U2*N #orthogonal to Ui, Uj but sd( |Ui) increases with Ui*Uj.
+  eps2 = U2*cos(p*U1) -U1*U2*N 
+  eps3 = eps1+eps2 #Correlated to eps1, eps2 but not Z. Also heteroscedastic
+  Z1=U1
+  Z2=U2
+  X1=t(Beta_1)%*%c(1,Z1,Z2)+eps1 #explained by Z1, Z2
   X2=t(Beta_2)%*%c(1,Z1,Z2)+eps2
-  r=c(X1,X2,1,Z1,Z2)
+  Y =t(Beta_0)%*%c(1,X1,X2)+eps3 #explained by X with endogeneity and heteroscedasticity
+  r=c(Y,1,Z1,Z2,X1,X2)
   return (r)
 } 
-
+# data generation
+#----
 M=array(0,c(n,n,3))
 M[,,1] = matrix(rep(Ui,n),c(n,n), byrow=FALSE) 
 M[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
-#M[,,3] = Uij
-
+M[,,3] = Uij
 A = apply(M,MARGIN = c(1,2),FUN = g)
-
 A=aperm(A,c(2,3,1))
-
-X = A[,,1:2]
-G = array(A[,,3],dim=c(n,n,1))
-Z = A[,,4:5]
-
+#A=dispatch_na(A)
+#A=diag_na(A)
+Y = A[,,1]
+G = A[,,2]
+Z = A[,,3:4]
+X = A[,,5:6]
+#----
 FS_OLS<-function(G,Z,X){
   #G contains control variables
   #Z contains IV
   #X contains the variables that will be regressed on G and Z
+  #----
+  if(is.matrix(G)){
+    G=array(G,dim=c(dim(G),1))
+  }
+  if(is.matrix(Z)){
+    Z=array(Z,dim=c(dim(Z),1))
+  }
+  if(is.matrix(X)){
+    X=array(X,dim=c(dim(X),1))
+  }
+  if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2])){
+    stop('\nFirst 2 dimensions of X,Z and G should be the same')
+  }
+  
+  if (!dim(X)[1]==dim(X)[2]){
+    stop('Arrays should be square in their first 2 dimensions ')
+  }
+  if(any(replace(G[,,1],is.na(G[,,1]),1)!=1)){
+    stop('Array G should contain the vector 1 in first position')
+  }
+  #----
   Betas = matrix(0,dim(G)[3]+dim(Z)[3],dim(X)[3])
   R2=rep(0,dim(X)[3])
   F_=rep(0,dim(X)[3])
@@ -503,14 +527,9 @@ D_SLS<-function(G,Z,X,first_Betas=NULL){
       }
     }
     else {stop('first_Betas is not a matrix !')}
-    
   }
   if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2])){
     stop('\nFirst 2 dimensions of X,Z and G should be the same')
-  }
-
-  if (!dim(X)[1]==dim(X)[2]){
-    stop('Arrays should be square in their first 2 dimensions ')
   }
   if (!dim(X)[1]==dim(X)[2]){
     stop('Arrays should be square in their first 2 dimensions ')
