@@ -332,7 +332,14 @@ OLS<-function(X,Y,hyp=0,model="JEDA"){
   values = matrix(c(Beta_hat,std,ts,p_val,hyp), ncol=5)
   colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values', 'H0_hyp')
   F_test = wald.test(Sigma=asvar/nb_obs, b=Beta_hat ,df=length(Beta_hat), L=diag(length(Beta_hat)))$result$Ftest[1]
-  return(list ('coefs'=values, 'var'=asvar, 'F'=F_test))
+  Y_hat = estimate(X,Beta_hat)
+  ep = eps(X,Y,Beta_hat)
+  my=mean(Y, na.rm=TRUE)
+
+  SCE = sum((Y_hat-my)^2, na.rm=TRUE)
+  SCT = sum((Y-my)^2, na.rm = TRUE)
+  R2<-SCE/SCT
+  return(list ('coefs'=values, 'var'=asvar, 'F'=F_test,"R2"= R2))
 }
 
 #Data generation----
@@ -414,8 +421,8 @@ LS<-OLS(Xij,Yij, model="BASIC")
 tests
 JEDA
 LS
-F_=wald.test(vcovHC(reg, type="HC0"), b=Beta_hat,df=3, L=diag(3))$result$Ftest[1]
-F_
+# F_=wald.test(vcovHC(reg, type="HC0"), b=Beta_hat,df=3, L=diag(3))$result$Ftest[1]
+# F_
 
 
 
