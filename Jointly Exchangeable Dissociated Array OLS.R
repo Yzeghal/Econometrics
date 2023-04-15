@@ -340,6 +340,88 @@ OLS<-function(X,Y,hyp=0,model="JEDA"){
   return(list ('coefs'=values, 'var'=asvar, 'F'=F_test,"R2"= R2))
 }
 
+#2SLS functions
+#----
+FS_OLS<-function(G,Z,X){
+  #G contains control variables
+  #Z contains IV
+  #X contains the variables that will be regressed on G and Z
+  #----
+  if(is.matrix(G)){
+    G=array(G,dim=c(dim(G),1))
+  }
+  if(is.matrix(Z)){
+    Z=array(Z,dim=c(dim(Z),1))
+  }
+  if(is.matrix(X)){
+    X=array(X,dim=c(dim(X),1))
+  }
+  if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2])){
+    stop('\nFirst 2 dimensions of X,Z and G should be the same')
+  }
+  
+  if (!dim(X)[1]==dim(X)[2]){
+    stop('Arrays should be square in their first 2 dimensions ')
+  }
+  if(any(replace(G[,,1],is.na(G[,,1]),1)!=1)){
+    stop('Array G should contain the vector 1 in first position')
+  }
+  #----
+  Betas = matrix(0,dim(G)[3]+dim(Z)[3],dim(X)[3])
+  R2=rep(0,dim(X)[3])
+  F_=rep(0,dim(X)[3])
+  GZ=array(c(G,Z),dim=c(dim(G)[1:2], dim(G)[3]+dim(Z)[3]))
+  for (i in 1:dim(X)[3]){
+    reg=OLS(GZ,X[,,i],model = "BASIC") #We only need the R2 and usual F-tests and "BASIC" is vectorised
+    Betas[,i]=reg$coefs[,1]
+    R2[i]=reg$R2
+    F_[i]=reg$F
+  }
+  return(list('Betas'=Betas,'R2'=R2,'F'=F_))
+}
+
+predIV<-function(G,Z,X,first_Betas=NULL){
+  #----
+  if(is.matrix(G)){
+    G=array(G,dim=c(dim(G),1))
+  }
+  if(is.matrix(Z)){
+    Z=array(Z,dim=c(dim(Z),1))
+  }
+  if(is.matrix(X)){
+    X=array(X,dim=c(dim(X),1))
+  }
+  if (!is.null(first_Betas)){
+    if(is.matrix(first_Betas)){
+      if (!(all((dim(first_Betas)==c(dim(G)[3]+dim(Z)[3],dim(X)[3]))))){
+        mess=paste("first_Betas given has dimension : ", dim(first_Betas)[1],dim(first_Betas)[2],"\n function expected", dim(G)[3]+dim(Z)[3],dim(X)[3])
+        stop(mess)
+      }
+    }
+    else {stop('first_Betas is not a matrix !')}
+  }
+  if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2])){
+    stop('\nFirst 2 dimensions of X,Z and G should be the same')
+  }
+  if (!dim(X)[1]==dim(X)[2]){
+    stop('Arrays should be square in their first 2 dimensions ')
+  }
+  m=matrix(1,dim(G)[1],dim(G)[2])
+  if(any(G[,,1]!=m)){
+    stop('Array G should contain the vector 1 in first position')
+  }
+  #----
+  if (is.null(first_Betas)){
+    first_Betas = FS_OLS(G,Z,X)$Betas
+  }
+  GZ=array(c(G,Z),dim=c(dim(G)[1:2],dim(Z)[3]+dim(G)[3]))
+  D=array(0,dim=dim(X))
+  for (i in 1:dim(X)[3]){
+    D[,,i]=estimate(GZ,first_Betas[,i])
+  }
+  return (D)
+}
+
 #NAs dispatchers----
 #generating data as jointly exchangeable dissociated arrays.
 
@@ -432,9 +514,9 @@ F_
 
 
 #Case of 2SLS----
-Beta_0 = matrix(c(1,4,8)) #constant coefficient included :(cst, X1,X2,G)
+Beta_0 = matrix(c(0.1,0.02,0.003)) #constant coefficient included :(cst, X1,X2,G)
 Beta_1 = matrix(c(3,5,7)) #(cst,Z1, Z2)
-Beta_2 = matrix(c(18,9,9)) #(cst,Z1, Z2)
+Beta_2 = matrix(c(2,4,8)) #(cst,Z1, Z2)
 n=100
 Ui=runif(n,0,1)
 Uj=runif(n,0,1)
@@ -442,21 +524,22 @@ Uij=matrix(runif(n^2,0,1),ncol=n)
 
 g<-function(UiUjUij){
   #UiUjUij is a vector c(Ui,Uj,Uij)
-  #function that generates the X, IVs Z and G sth cov (X,G)=0 to make 1SLS verification easier.
+  #function that generates the X, IVs Z and G s.th G=1 for now
   U1=UiUjUij[1]
   U2=UiUjUij[2]
   U12=UiUjUij[3]
   p<-2*pi
-  N=cos(p*U12) #orthogonal to all other random variables
-  eps1 = U1*cos(p*U2) +U1*U2*N #orthogonal to Ui, Uj but sd( |Ui) increases with Ui*Uj.
-  eps2 = U2*cos(p*U1) -U1*U2*N 
-  eps3 = eps1+eps2 #Correlated to eps1, eps2 but not Z. Also heteroscedastic
+  N1=cos(p*U12) #orthogonal to all other random variables
+  N2=cos(3*p*U12)
+  eps1 = 10*(U1*U2/3+0.66)*N1 
+  eps2 = 10*(U1*U2/3+0.66)*N2
+  eps3 = N1+N2 #Correlated to eps1, eps2 but not Z. Also heteroscedastic
   Z1=U1
   Z2=U2
-  X1=t(Beta_1)%*%c(1,Z1,Z2)+eps1 #explained by Z1, Z2
-  X2=t(Beta_2)%*%c(1,Z1,Z2)+eps2
-  Y =t(Beta_0)%*%c(1,X1,X2)+eps3 #explained by X with endogeneity and heteroscedasticity
-  r=c(Y,1,Z1,Z2,X1,X2)
+  X1=t(Beta_1)%*%matrix(c(1,Z1,Z2))+eps1
+  X2=t(Beta_2)%*%matrix(c(1,Z1,Z2))+eps2
+  Y =t(Beta_0)%*%c(1,X1,X2)+eps3 #Y explained by X with endogeneity and heteroscedasticity
+  r=c(Y,1,Z1,Z2,X1,X2,eps1,eps2,eps3)
   return (r)
 } 
 # data generation
@@ -474,87 +557,15 @@ G = A[,,2]
 Z = A[,,3:4]
 X = A[,,5:6]
 #----
-FS_OLS<-function(G,Z,X){
-  #G contains control variables
-  #Z contains IV
-  #X contains the variables that will be regressed on G and Z
-  #----
-  if(is.matrix(G)){
-    G=array(G,dim=c(dim(G),1))
-  }
-  if(is.matrix(Z)){
-    Z=array(Z,dim=c(dim(Z),1))
-  }
-  if(is.matrix(X)){
-    X=array(X,dim=c(dim(X),1))
-  }
-  if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2])){
-    stop('\nFirst 2 dimensions of X,Z and G should be the same')
-  }
-  
-  if (!dim(X)[1]==dim(X)[2]){
-    stop('Arrays should be square in their first 2 dimensions ')
-  }
-  if(any(replace(G[,,1],is.na(G[,,1]),1)!=1)){
-    stop('Array G should contain the vector 1 in first position')
-  }
-  #----
-  Betas = matrix(0,dim(G)[3]+dim(Z)[3],dim(X)[3])
-  R2=rep(0,dim(X)[3])
-  F_=rep(0,dim(X)[3])
-  GZ=array(c(G,Z),dim=c(dim(G)[1:2], dim(G)[3]+dim(Z)[3]))
-  for (i in 1:dim(X)[3]){
-    reg=OLS(GZ,X[,,i],model = "BASIC") #We only need the R2 and usual F-tests and "BASIC" is vectorised
-    Betas[,i]=reg$coefs[,1]
-    R2[i]=reg$R2
-    F_[i]=reg$F
-  }
-  return(list('Betas'=Betas,'R2'=R2,'F'=F_))
-}
-
-predIV<-function(G,Z,X,first_Betas=NULL){
-  #----
-  if(is.matrix(G)){
-    G=array(G,dim=c(dim(G),1))
-  }
-  if(is.matrix(Z)){
-    Z=array(Z,dim=c(dim(Z),1))
-  }
-  if(is.matrix(X)){
-    X=array(X,dim=c(dim(X),1))
-  }
-  if (!is.null(first_Betas)){
-    if(is.matrix(first_Betas)){
-      if (!(all((dim(first_Betas)==c(dim(G)[3]+dim(Z)[3],dim(X)[3]))))){
-        mess=paste("first_Betas given has dimension : ", dim(first_Betas)[1],dim(first_Betas)[2],"\n function expected", dim(G)[3]+dim(Z)[3],dim(X)[3])
-        stop(mess)
-      }
-    }
-    else {stop('first_Betas is not a matrix !')}
-  }
-  if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2])){
-    stop('\nFirst 2 dimensions of X,Z and G should be the same')
-  }
-  if (!dim(X)[1]==dim(X)[2]){
-    stop('Arrays should be square in their first 2 dimensions ')
-  }
-  m=matrix(1,dim(G)[1],dim(G)[2])
-  if(any(G[,,1]!=m)){
-    stop('Array G should contain the vector 1 in first position')
-  }
-  #----
-  if (is.null(first_Betas)){
-    first_Betas = FS_OLS(G,Z,X)$Betas
-  }
-  GZ=array(c(G,Z),dim=c(dim(G)[1:2],dim(Z)[3]+dim(G)[3]))
-  D=array(0,dim=dim(X))
-  for (i in 1:dim(X)[3]){
-    D[,,i]=estimate(GZ,first_Betas[,i])
-  }
-  return (D)
-}
-
-
+e1=as.vector(A[,,7])
+e2=as.vector(A[,,8])
+e3=as.vector(A[,,9])
+x1=as.vector(X[,,1])
+x2=as.vector(X[,,2])
+z1=as.vector(Z[,,1])
+z2=as.vector(Z[,,2])
+cor(e3,z1)
+cor(e3,x1)
 reg1=FS_OLS(G,Z,X) #regression of X on G and Z
 reg1
 B = reg1$Betas
@@ -563,8 +574,10 @@ G=array(G,dim=c(dim(G),1))
 GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
 GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #to compare with X
 
-reg2=OLS(GD,Y) #regression of Y on G and D
-noIV<-OLS(GX,Y)
+reg2=OLS(GD,Y,model="BASIC") #regression of Y on G and D
+noIV<-OLS(GX,Y,model="BASIC")
 
+reg2
+noIV
 
 
