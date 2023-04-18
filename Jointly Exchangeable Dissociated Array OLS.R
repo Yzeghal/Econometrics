@@ -513,10 +513,10 @@ F_
 
 
 
-#Case of 2SLS----
-Beta_0 = matrix(c(0.1,0.02,0.003)) #constant coefficient included :(cst, X1,X2,G)
-Beta_1 = matrix(c(3,5,7)) #(cst,Z1, Z2)
-Beta_2 = matrix(c(2,4,8)) #(cst,Z1, Z2)
+#Case of 2SLS no control variable----
+Beta_0 = matrix(c(1,2,3)) #constant coefficient included :(cst, X1,X2)
+Beta_1 = matrix(c(30,5,7)) #(cst,Z1, Z2) #boost cst coef to max mean(x) and the endogeneity error (on cst coef mainly)
+Beta_2 = matrix(c(20,4,8)) #(cst,Z1, Z2)
 n=100
 Ui=runif(n,0,1)
 Uj=runif(n,0,1)
@@ -531,8 +531,8 @@ g<-function(UiUjUij){
   p<-2*pi
   N1=cos(p*U12) #orthogonal to all other random variables
   N2=cos(3*p*U12)
-  eps1 = 10*(U1*U2/3+0.66)*N1 
-  eps2 = 10*(U1*U2/3+0.66)*N2
+  eps1 = 1*(U1*U2/3+0.66)*N1 
+  eps2 = 1*(U1*U2/3+0.66)*N2
   eps3 = N1+N2 #Correlated to eps1, eps2 but not Z. Also heteroscedastic
   Z1=U1
   Z2=U2
@@ -542,6 +542,8 @@ g<-function(UiUjUij){
   r=c(Y,1,Z1,Z2,X1,X2,eps1,eps2,eps3)
   return (r)
 } 
+
+
 # data generation
 #----
 M=array(0,c(n,n,3))
@@ -564,8 +566,79 @@ x1=as.vector(X[,,1])
 x2=as.vector(X[,,2])
 z1=as.vector(Z[,,1])
 z2=as.vector(Z[,,2])
-cor(e3,z1)
-cor(e3,x1)
+cor(e1,z2)
+cor(e2,x2)
+reg1=FS_OLS(G,Z,X) #regression of X on G and Z
+reg1
+B = reg1$Betas
+D=predIV(G,Z,X,first_Betas=B)
+G=array(G,dim=c(dim(G),1))
+GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
+GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #to compare with X
+
+reg2=OLS(GD,Y,model="BASIC") #regression of Y on G and D
+noIV<-OLS(GX,Y,model="BASIC")
+
+reg2
+noIV
+
+#Case of 2SLS with control variable----
+Beta_0 = matrix(c(1,2,3,4)) #constant coefficient included :(cst,G,X1,X2)
+Beta_1 = matrix(c(30,5,7)) #(cst,Z1, Z2) #boost cst coef to max mean(x) and the endogeneity error (on cst coef mainly)
+Beta_2 = matrix(c(20,4,8)) #(cst,Z1, Z2)
+n=100
+Ui=runif(n,0,1)
+Uj=runif(n,0,1)
+Uij=matrix(runif(n^2,0,1),ncol=n)
+
+g2<-function(UiUjUij){
+  #UiUjUij is a vector c(Ui,Uj,Uij)
+  #function that generates the X, IVs Z and G s.th G=1 for now
+  U1=UiUjUij[1]
+  U2=UiUjUij[2]
+  U12=UiUjUij[3]
+  p<-2*pi
+  N1=cos(p*U12) #orthogonal to all other random variables
+  N2=cos(3*p*U12)
+  G = 1+cos(7*p*U12) #orthogonal to U1, U2, U12 and their cos(2pi n . ) for n!=7
+  eps1 = 1*(U1*U2/3+0.66)*N1 
+  eps2 = 1*(U1*U2/3+0.66)*N2
+  eps3 = N1+N2 #Correlated to eps1, eps2 but not Z. Also heteroscedastic
+  Z1=U1
+  Z2=U2
+  X1=t(Beta_1)%*%matrix(c(1,Z1,Z2))+eps1
+  X2=t(Beta_2)%*%matrix(c(1,Z1,Z2))+eps2
+  Y =t(Beta_0)%*%c(1,G,X1,X2)+eps3 #Y explained by X with endogeneity and heteroscedasticity
+  r=c(Y,1,G,Z1,Z2,X1,X2,eps1,eps2,eps3)
+  return (r)
+} 
+
+
+# data generation
+#----
+M=array(0,c(n,n,3))
+M[,,1] = matrix(rep(Ui,n),c(n,n), byrow=FALSE) 
+M[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
+M[,,3] = Uij
+A = apply(M,MARGIN = c(1,2),FUN = g2)
+A=aperm(A,c(2,3,1))
+#A=dispatch_na(A)
+#A=diag_na(A)
+Y = A[,,1]
+G = A[,,2:3]
+Z = A[,,4:5]
+X = A[,,6:7]
+#----
+e1=as.vector(A[,,8])
+e2=as.vector(A[,,9])
+e3=as.vector(A[,,10])
+x1=as.vector(X[,,1])
+x2=as.vector(X[,,2])
+z1=as.vector(Z[,,1])
+z2=as.vector(Z[,,2])
+g1=as.vector(G[,,2])
+cor(e1,z2)
+cor(e2,x2)
 reg1=FS_OLS(G,Z,X) #regression of X on G and Z
 reg1
 B = reg1$Betas
