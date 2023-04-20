@@ -329,7 +329,7 @@ OLS<-function(X,Y,hyp=0,model="JEDA"){
   if (sum(abs(hyp))==0){hyp = rep(0,length(Beta_hat))}
   values = matrix(c(Beta_hat,std,ts,p_val,hyp), ncol=5)
   colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values', 'H0_hyp')
-  F_test = wald.test(Sigma=asvar/nb_obs, b=Beta_hat ,df=length(Beta_hat), L=diag(length(Beta_hat)))$result$Ftest[1]
+  F_test = wald.test(Sigma=asvar/dimx[1], b=Beta_hat, L=diag(length(Beta_hat)))$result$chi2[1] #normalized by nb of rows of X,
   Y_hat = estimate(X,Beta_hat)
   ep = eps(X,Y,Beta_hat)
   my=mean(Y, na.rm=TRUE)
@@ -576,7 +576,7 @@ G=array(G,dim=c(dim(G),1))
 GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
 GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #to compare with X
 
-reg2=OLS(GD,Y,model="BASIC") #regression of Y on G and D
+reg2=OLS(GD,Y,model="BASIC") #regression of Y on G and D. Basic is for calculation speed.
 noIV<-OLS(GX,Y,model="BASIC")
 
 reg2
@@ -600,7 +600,7 @@ g2<-function(UiUjUij){
   p<-2*pi
   N1=cos(p*U12) #orthogonal to all other random variables
   N2=cos(3*p*U12)
-  G = 1+cos(7*p*U12) #orthogonal to U1, U2, U12 and their cos(2pi n . ) for n!=7
+  G = 3*U1+cos(7*p*U12) #orthogonal to U2, U12 and their cos(2pi n . ) for n !=7 but not U1 
   eps1 = 1*(U1*U2/3+0.66)*N1 
   eps2 = 1*(U1*U2/3+0.66)*N2
   eps3 = N1+N2 #Correlated to eps1, eps2 but not Z. Also heteroscedastic
@@ -611,7 +611,7 @@ g2<-function(UiUjUij){
   Y =t(Beta_0)%*%c(1,G,X1,X2)+eps3 #Y explained by X with endogeneity and heteroscedasticity
   r=c(Y,1,G,Z1,Z2,X1,X2,eps1,eps2,eps3)
   return (r)
-} 
+}
 
 
 # data generation
@@ -647,10 +647,17 @@ G=array(G,dim=c(dim(G),1))
 GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
 GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #to compare with X
 
-reg2=OLS(GD,Y,model="BASIC") #regression of Y on G and D
+reg2=OLS(GD,Y,model="JEDA") #regression of Y on G and D
 noIV<-OLS(GX,Y,model="BASIC")
 
 reg2
 noIV
 
-
+#Check wald.test 
+#---- 
+Beta_hat = matrix(reg2$coefs[,1])
+asvar = reg2$var
+F_= 100 * t(Beta_hat)%*%matrix.inverse(asvar)%*%Beta_hat 
+W=wald.test(Sigma=asvar/100, b=Beta_hat, L=diag(length(Beta_hat)),verbose=TRUE)$result$chi2[1]
+W-F_
+#----
