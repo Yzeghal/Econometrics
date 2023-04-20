@@ -1,3 +1,4 @@
+source('C:/Users/tayoy/Documents/GitHub/Econometrics/Jointly Exchangeable Dissociated Array OLS.R')
 #Case of OLS -----
 
 Beta_0 = matrix(c(1,2,4))
@@ -234,16 +235,16 @@ reg1=FS_OLS(G,Z,X) #regression of X on G and Z
 reg1
 B = reg1$Betas
 D=predIV(G,Z,X,first_Betas=B)
-G=array(G,dim=c(dim(G),1))
 GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
 GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #to compare with X
 
 reg2=OLS(GD,Y,model="JEDA") #regression of Y on G and D
 noIV<-OLS(GX,Y,model="BASIC")
-
+reg3<-IV_LS(G,Z,X,Y)
 reg2
 noIV
-
+reg3
+reg3$SLS$coefs-reg2$coefs
 #Check wald.test 
 #---- 
 Beta_hat = matrix(reg2$coefs[,1])
