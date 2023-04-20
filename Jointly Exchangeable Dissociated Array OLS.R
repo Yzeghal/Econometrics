@@ -6,6 +6,8 @@ library(sandwich) # to compute heteroscedasticityvariance-covariance.
 # Use vcovHC(reg, type = "HC0") to have variance covariance matrix calculated with the sandwich formula.
 library(aod) #contains functions such that wald test, whiwh we use in 2SLS.
 #source("C:/Users/tayoy/Documents/GitHub/Econometrics/Basic Regression.R", local = b <- new.env())
+#library(AER) #for a 2SLS built-in functions benchmark 
+
 
 #Computations ----
 spot_na<-function(A){
@@ -29,6 +31,34 @@ J<-function(X,Y){ #returnns J NORMALISED by nuber of observations used in the su
     for (j in 1:dim(X)[1]){
       if (not_na[i,j]){
         M=M+matrix(X[i,j,])%*%t(matrix(X[i,j,]))
+      }
+    }
+  }
+  M=M/nb_obs
+  return (M)
+}
+B<-function(X,Y){ #returnns B NORMALISED by nuber of observations used in the sum
+  #----
+  if (dim(X)[1]!=dim(X)[2]){
+    stop("Matrix X is not square !")
+  }
+  if (dim(Y)[1]!=dim(Y)[2]){
+    stop("Matrix Y is not square !")
+  }
+  if(dim(X)[1]!=dim(Y)[1]){
+    stop("And Y should have the same size")
+  }
+  #----
+  not_nax=!map_na(X)
+  not_nay=!map_na(Y)
+  not_na=not_nax&not_nay
+  nb_obs=sum(not_na)
+  M=matrix(0,dim(X)[3],dim(Y)[3])
+  
+  for (i in 1:dim(X)[1]){
+    for (j in 1:dim(X)[1]){
+      if (not_na[i,j]){
+        M=M+matrix(X[i,j,])%*%t(matrix(Y[i,j,]))
       }
     }
   }
@@ -64,7 +94,7 @@ Beta2<-function(X,Y){
       }
     }
   }
-  print(paste(sum(viable),'viable terms'))
+  message(paste(sum(viable),'viable terms'))
   second_term=second_term/sum(viable)
   #print(second_term)
   matrix.inverse(J_hat)%*%second_term
@@ -97,7 +127,7 @@ Beta<-function(X,Y, J_hat=NULL){ #Does the match with lm results (which simply d
   }
   #print(X)
   if (is.matrix(J_hat)&&is.square.matrix(J_hat)&&dim(J_hat)[1]==dim(X)[3]){
-      print('J given in argument is used')
+      message('J given in argument is used')
     }
   else{
     J_hat=J(X,Y)
@@ -111,7 +141,7 @@ Beta<-function(X,Y, J_hat=NULL){ #Does the match with lm results (which simply d
       }
     }
   }
-  print(paste(sum(viable),'viable terms'))
+  message(paste(sum(viable),'viable terms'))
   second_term=second_term/sum(viable)
   #print(second_term)
   matrix.inverse(J_hat)%*%second_term
@@ -198,8 +228,8 @@ H_basic_OLS<-function(X,Y,b){
 }
 
 
-H_JEDA<-function(X,Y,b){
-  
+H_JEDA<-function(X,Y,b=NULL, ep=NULL){
+  #give either b or diretly ep the residuals
   #Safety tests
   #----
   if (any(dim(Y)!=dim(X)[1:2])){
@@ -212,11 +242,29 @@ H_JEDA<-function(X,Y,b){
   }
   d=dim(X)[3]
   nx=dim(X)[1]
-  if (length(b)!=d){
-    stop("b and dim(X)[3] should have the same length")
+  if (!is.null(b)){
+    if (length(b)!=d){
+      stop("b and dim(X)[3] should have the same length")
+    }
+    
   }
+  else{
+    if(is.null(ep)){
+      stop("At least one of b or ep should not be NULL")
+    }
+    if (!is.matrix(ep)){
+      stop("ep should be a matrix")
+    }
+    if(any(dim(ep)!=dim(X)[1:2])){
+      stop("ep dimensions do not match X dimensions")
+    }
+  }
+  
   #----
-  ep=eps(X,Y,b)
+  if (!is.null(b)){
+    ep=eps(X,Y,b)
+  }
+  
   not_naX=!map_na(X)
   not_naY=!map_na(Y)
   viable = not_naX&not_naY #ep is already NA if X or Y is NA
@@ -269,6 +317,7 @@ standard_errors<-function (var,nx){
 }
 
 student_t<-function(Beta_hat,sd,hyp = 0){
+  if (sd==0){stop("sd is 0. Sth to correct")}
   t=(Beta_hat-hyp)/sd
   return(t)
 }
@@ -317,26 +366,43 @@ OLS<-function(X,Y,hyp=0,model="JEDA"){
   }
   Beta_hat = Beta(X,Y, J=J_hat)
   if (model == "JEDA"){
-    H_hat=H_JEDA(X,Y,Beta_hat)
-  }
+    H_hat=H_JEDA(X,Y,b=Beta_hat)
+    asvar=asymptotic_variance_OLS(J=J_hat, H=H_hat)
+    std=standard_errors(asvar,dimx[1])
+    ts=student_t(Beta_hat,std,hyp = hyp)
+    p_val=p_values(Beta_hat, std ,dimx[1] , hyp = 0)
+    if (sum(abs(hyp))==0){hyp = rep(0,length(Beta_hat))}
+    values = matrix(c(Beta_hat,std,ts,p_val,hyp), ncol=5)
+    colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values', 'H0_hyp')
+    F_test = wald.test(Sigma=asvar/dimx[1], b=Beta_hat, L=diag(length(Beta_hat)))$result$chi2[1] #normalized by nb of rows of X,
+    Y_hat = estimate(X,Beta_hat)
+    ep = eps(X,Y,Beta_hat)
+    my=mean(Y, na.rm=TRUE)
+  } 
   if (model == "BASIC"){
     H_hat=H_basic_OLS(X,Y,Beta_hat)
+    asvar=asymptotic_variance_OLS(J=J_hat, H=H_hat)
+    std=standard_errors(asvar,nb_obs)
+    ts=student_t(Beta_hat,std,hyp = hyp)
+    p_val=p_values(Beta_hat, std ,nb_obs, hyp = 0)
+    if (sum(abs(hyp))==0){hyp = rep(0,length(Beta_hat))}
+    values = matrix(c(Beta_hat,std,ts,p_val,hyp), ncol=5)
+    colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values', 'H0_hyp')
+    F_test = wald.test(Sigma=asvar/nb_obs, b=Beta_hat, L=diag(length(Beta_hat)))$result$chi2[1] #normalized by nb of rows of X,
+    Y_hat = estimate(X,Beta_hat)
+    ep = eps(X,Y,Beta_hat)
+    my=mean(Y, na.rm=TRUE)
   }
-  asvar=asymptotic_variance_OLS(J=J_hat, H=H_hat)
-  std=standard_errors(asvar,nb_obs)
-  ts=student_t(Beta_hat,std,hyp = hyp)
-  p_val=p_values(Beta_hat, std ,nb_obs , hyp = 0)
-  if (sum(abs(hyp))==0){hyp = rep(0,length(Beta_hat))}
-  values = matrix(c(Beta_hat,std,ts,p_val,hyp), ncol=5)
-  colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values', 'H0_hyp')
-  F_test = wald.test(Sigma=asvar/dimx[1], b=Beta_hat, L=diag(length(Beta_hat)))$result$chi2[1] #normalized by nb of rows of X,
-  Y_hat = estimate(X,Beta_hat)
-  ep = eps(X,Y,Beta_hat)
-  my=mean(Y, na.rm=TRUE)
 
-  SCE = sum((Y_hat-my)^2, na.rm=TRUE)
-  SCT = sum((Y-my)^2, na.rm = TRUE)
-  R2<-SCE/SCT
+  if (sd(Y,na.rm=TRUE)==0){
+    R2=1
+  }
+  else{
+    SCE = sum((Y_hat-my)^2, na.rm=TRUE)
+    SCT = sum((Y-my)^2, na.rm = TRUE)
+    R2<-SCE/SCT
+  }
+
   return(list ('coefs'=values, 'var'=asvar, 'F'=F_test,"R2"= R2))
 }
 
@@ -372,7 +438,7 @@ FS_OLS<-function(G,Z,X){
   F_=rep(0,dim(X)[3])
   GZ=array(c(G,Z),dim=c(dim(G)[1:2], dim(G)[3]+dim(Z)[3]))
   for (i in 1:dim(X)[3]){
-    reg=OLS(GZ,X[,,i],model = "BASIC") #We only need the R2 and usual F-tests and "BASIC" is vectorised
+    reg=OLS(GZ,X[,,i],model = "JEDA") #We only need the R2 and usual F-tests
     Betas[,i]=reg$coefs[,1]
     R2[i]=reg$R2
     F_[i]=reg$F
@@ -422,6 +488,66 @@ predIV<-function(G,Z,X,first_Betas=NULL){
   return (D)
 }
 
+IV_LS<-function(G,Z,X,Y,hyp=0){
+  #G : controls
+  #Z : instruments
+  #X : endogenous variable
+  #Y : explained variable
+  #----
+  if(is.matrix(G)){
+    G=array(G,dim=c(dim(G),1))
+  }
+  if(is.matrix(Z)){
+    Z=array(Z,dim=c(dim(Z),1))
+  }
+  if(is.matrix(X)){
+    X=array(X,dim=c(dim(X),1))
+  }
+  if (!(dim(X)[1:2]==dim(Z)[1:2]&&dim(Z)[1:2]==dim(G)[1:2]&&dim(Z)[1:2]==dim(Y))){
+    stop('\nFirst 2 dimensions of G,Z,X,and Y should be the same')
+  }
+  
+  if (!dim(X)[1]==dim(X)[2]){
+    stop('Arrays should be square in their first 2 dimensions ')
+  }
+  if(any(replace(G[,,1],is.na(G[,,1]),1)!=1)){
+    stop('Array G should contain the vector 1 in first position')
+  }
+  #----
+  GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #This time it is done with other notation.
+  GZ=array(c(G,Z),dim=c(dim(G)[1:2],dim(Z)[3]+dim(G)[3])) #Errors due to re-regression of G on G are 1e-16
+  reg1=FS_OLS(G,Z,GX)#regression of X on G and Z
+  GD=predIV(G,Z,GX,first_Betas=reg1$Betas)
+  Beta_2SLS=Beta(GD,Y)
+  ep=eps(GX,Y,b=Beta_2SLS)
+  A=J(GZ,Y)
+  B=B(GZ,GX)
+  H=H_JEDA(X=GZ,Y=Y,ep=ep)
+  invA = matrix.inverse(A)
+  bread = matrix.inverse(t(B)%*%invA%*%B)
+  salad = t(B)%*%invA
+  asvar = bread%*%salad%*%H%*%t(salad)%*%bread #Formula
+  
+  dimx=dim(X)
+  std=standard_errors(asvar,dimx[1])
+  ts=student_t(Beta_2SLS,std,hyp = hyp)
+  p_val=p_values(Beta_2SLS, std ,dimx[1] , hyp = 0)
+  if (sum(abs(hyp))==0){hyp = rep(0,length(Beta_2SLS))}
+  values = matrix(c(Beta_2SLS,std,ts,p_val,hyp), ncol=5)
+  colnames(values)=c('Beta_hat', 'Std_Err','Student_t','p-values', 'H0_hyp')
+  F_test = wald.test(Sigma=asvar/dimx[1], b=Beta_2SLS, L=diag(length(Beta_2SLS)))$result$chi2[1] #normalized by nb of rows of X,
+  Y_hat = estimate(GD,Beta_2SLS)
+  ep2 = eps(GD,Y,Beta_2SLS)
+  
+  my=mean(Y, na.rm=TRUE)
+  SCE = sum((Y_hat-my)^2, na.rm=TRUE)
+  SCT = sum((Y-my)^2, na.rm = TRUE)
+  R2<-SCE/SCT
+  
+  return(list('SLS'=list('coefs'=values, 'var'=asvar, 'F'=F_test,"R2"= R2),"FLS"=list('R2'=reg1$R2,'F'=reg1$F)))
+}
+SLS=IV_LS(G,Z,X,Y)
+
 #NAs dispatchers----
 #generating data as jointly exchangeable dissociated arrays.
 
@@ -446,151 +572,15 @@ diag_na<-function(Arr){
 }
 
 
-#Case of OLS -----
-
-Beta_0 = matrix(c(1,2,4))
-n=50
-Ui=runif(n,0,1)
-Uj=runif(n,0,1)
-Uij=matrix(runif(n^2,0,1),ncol=n)
-
-f<-function(UiUjUij){
-  #function f
-  Ui=UiUjUij[1]
-  Uj=UiUjUij[2]
-  Uij=UiUjUij[3]
-  c=10
-  e=0.1
-  Xij=matrix(c(1,Ui,Uj)) #constant added here
-  # print(Xij)
-  epsilon=-(Ui+Uj)*c/2+Ui*Uj*c+c/4-e/2+e*Uij
-  Yij=t(Beta_0)%*%matrix(Xij)+epsilon
-  # print(Yij)
-  return (array(c(Xij,Yij),c(1,length(Beta_0)+1)))
-}
-N = array(0,c(n,n,3))
-N[,,1] = matrix(rep(Ui,n),c(n,n), byrow=FALSE) 
-N[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
-N[,,3] = Uij
-M = apply(N,MARGIN = c(1,2),FUN = f)
-M=aperm(M,c(2,3,1))
-
-
-
-# M is a n*n*length(Beta_0)+1 array :
-# Its 2 first dimensions are lines and columns.
-# The last dimension is :
-# (1, X1,...,Xk,Yk) with length 1+length(Beta_0) because Beta_0 includes
-# a constant coef
-
-# M=dispatch_na(M, ind=2)
-# M=dispatch_na(M, ind=3)
-# M=dispatch_na(M, ind=4)
-
-# M=diag_na(M)
-Xij=M[,,1:length(Beta_0)]
-Yij=M[,,length(Beta_0)+1]
-#transforming data to give them to lm()
-x1=as.vector(Xij[,,2])
-x2=as.vector(Xij[,,3])
-x=matrix(c(x1,x2),ncol=2)
-y=matrix(as.vector(Yij[,]))
-
-#Difference with built in
-reg<-lm(y~x)
-Beta_hat=reg$coefficients
-tests=coeftest(reg, vcov = vcovHC(reg, type = "HC0")) #performs tests on the model reg with the variance matrix calculated with vcovHC
-
-
-JEDA<-OLS(Xij,Yij, model="JEDA")
-LS<-OLS(Xij,Yij, model="BASIC")
-
-JEDA
-LS
-tests
-F_=wald.test(vcovHC(reg, type="HC0"), b=Beta_hat,df=3, L=diag(3))$result$Ftest[1]
-F_
-
-
-
-#Case of 2SLS no control variable----
-Beta_0 = matrix(c(1,2,3)) #constant coefficient included :(cst, X1,X2)
-Beta_1 = matrix(c(30,5,7)) #(cst,Z1, Z2) #boost cst coef to max mean(x) and the endogeneity error (on cst coef mainly)
-Beta_2 = matrix(c(20,4,8)) #(cst,Z1, Z2)
-n=100
-Ui=runif(n,0,1)
-Uj=runif(n,0,1)
-Uij=matrix(runif(n^2,0,1),ncol=n)
-
-g<-function(UiUjUij){
-  #UiUjUij is a vector c(Ui,Uj,Uij)
-  #function that generates the X, IVs Z and G s.th G=1 for now
-  U1=UiUjUij[1]
-  U2=UiUjUij[2]
-  U12=UiUjUij[3]
-  p<-2*pi
-  N1=cos(p*U12) #orthogonal to all other random variables
-  N2=cos(3*p*U12)
-  eps1 = 1*(U1*U2/3+0.66)*N1 
-  eps2 = 1*(U1*U2/3+0.66)*N2
-  eps3 = N1+N2 #Correlated to eps1, eps2 but not Z. Also heteroscedastic
-  Z1=U1
-  Z2=U2
-  X1=t(Beta_1)%*%matrix(c(1,Z1,Z2))+eps1
-  X2=t(Beta_2)%*%matrix(c(1,Z1,Z2))+eps2
-  Y =t(Beta_0)%*%c(1,X1,X2)+eps3 #Y explained by X with endogeneity and heteroscedasticity
-  r=c(Y,1,Z1,Z2,X1,X2,eps1,eps2,eps3)
-  return (r)
-} 
-
-
-# data generation
+#Case of 2SLS with control variable
 #----
-M=array(0,c(n,n,3))
-M[,,1] = matrix(rep(Ui,n),c(n,n), byrow=FALSE) 
-M[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
-M[,,3] = Uij
-A = apply(M,MARGIN = c(1,2),FUN = g)
-A=aperm(A,c(2,3,1))
-#A=dispatch_na(A)
-#A=diag_na(A)
-Y = A[,,1]
-G = A[,,2]
-Z = A[,,3:4]
-X = A[,,5:6]
-#----
-e1=as.vector(A[,,7])
-e2=as.vector(A[,,8])
-e3=as.vector(A[,,9])
-x1=as.vector(X[,,1])
-x2=as.vector(X[,,2])
-z1=as.vector(Z[,,1])
-z2=as.vector(Z[,,2])
-cor(e1,z2)
-cor(e2,x2)
-reg1=FS_OLS(G,Z,X) #regression of X on G and Z
-reg1
-B = reg1$Betas
-D=predIV(G,Z,X,first_Betas=B)
-G=array(G,dim=c(dim(G),1))
-GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
-GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #to compare with X
-
-reg2=OLS(GD,Y,model="BASIC") #regression of Y on G and D. Basic is for calculation speed.
-noIV<-OLS(GX,Y,model="BASIC")
-
-reg2
-noIV
-
-#Case of 2SLS with control variable----
 Beta_0 = matrix(c(1,2,3,4)) #constant coefficient included :(cst,G,X1,X2)
-Beta_1 = matrix(c(30,5,7)) #(cst,Z1, Z2) #boost cst coef to max mean(x) and the endogeneity error (on cst coef mainly)
-Beta_2 = matrix(c(20,4,8)) #(cst,Z1, Z2)
+Beta_1 = matrix(c(0,5,7)) #(cst,Z1, Z2) #boost cst coef to max mean(x) and the endogeneity error (on cst coef mainly)
+Beta_2 = matrix(c(0,4,8)) #(cst,Z1, Z2)
 n=100
 Ui=runif(n,0,1)
 Uj=runif(n,0,1)
 Uij=matrix(runif(n^2,0,1),ncol=n)
-
 g2<-function(UiUjUij){
   #UiUjUij is a vector c(Ui,Uj,Uij)
   #function that generates the X, IVs Z and G s.th G=1 for now
@@ -600,22 +590,18 @@ g2<-function(UiUjUij){
   p<-2*pi
   N1=cos(p*U12) #orthogonal to all other random variables
   N2=cos(3*p*U12)
-  G = 3*U1+cos(7*p*U12) #orthogonal to U2, U12 and their cos(2pi n . ) for n !=7 but not U1 
-  eps1 = 1*(U1*U2/3+0.66)*N1 
-  eps2 = 1*(U1*U2/3+0.66)*N2
+  G = U1+3*cos(7*p*U12) #orthogonal to U2, U12 and their cos(2pi n . ) for n !=7 but not U1 
+  eps1 = 3*(U1*U2/3+0.66)*N1 
+  eps2 = 3*(U1*U2/3+0.66)*N2
   eps3 = N1+N2 #Correlated to eps1, eps2 but not Z. Also heteroscedastic
   Z1=U1
   Z2=U2
-  X1=t(Beta_1)%*%matrix(c(1,Z1,Z2))+eps1
-  X2=t(Beta_2)%*%matrix(c(1,Z1,Z2))+eps2
+  X1=t(Beta_1)%*%matrix(c(1,Z1,Z2))+10*G+eps1 #correlate G and X to have impact on G coef in OLS but not so much in 2SLS
+  X2=t(Beta_2)%*%matrix(c(1,Z1,Z2))+10*G+eps2
   Y =t(Beta_0)%*%c(1,G,X1,X2)+eps3 #Y explained by X with endogeneity and heteroscedasticity
   r=c(Y,1,G,Z1,Z2,X1,X2,eps1,eps2,eps3)
   return (r)
 }
-
-
-# data generation
-#----
 M=array(0,c(n,n,3))
 M[,,1] = matrix(rep(Ui,n),c(n,n), byrow=FALSE) 
 M[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
@@ -628,36 +614,18 @@ Y = A[,,1]
 G = A[,,2:3]
 Z = A[,,4:5]
 X = A[,,6:7]
-#----
-e1=as.vector(A[,,8])
-e2=as.vector(A[,,9])
 e3=as.vector(A[,,10])
-x1=as.vector(X[,,1])
-x2=as.vector(X[,,2])
-z1=as.vector(Z[,,1])
-z2=as.vector(Z[,,2])
-g1=as.vector(G[,,2])
-cor(e1,z2)
-cor(e2,x2)
-reg1=FS_OLS(G,Z,X) #regression of X on G and Z
+mean(e3)
+#----
+reg1=FS_OLS(G,Z,X) 
 reg1
-B = reg1$Betas
-D=predIV(G,Z,X,first_Betas=B)
-G=array(G,dim=c(dim(G),1))
+Betas1 = reg1$Betas
+D=predIV(G,Z,X,first_Betas=Betas1)
 GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
 GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #to compare with X
-
-reg2=OLS(GD,Y,model="JEDA") #regression of Y on G and D
+reg2=OLS(GD,Y,model="BASIC") #regression of Y on G and D
 noIV<-OLS(GX,Y,model="BASIC")
-
 reg2
 noIV
 
-#Check wald.test 
-#---- 
-Beta_hat = matrix(reg2$coefs[,1])
-asvar = reg2$var
-F_= 100 * t(Beta_hat)%*%matrix.inverse(asvar)%*%Beta_hat 
-W=wald.test(Sigma=asvar/100, b=Beta_hat, L=diag(length(Beta_hat)),verbose=TRUE)$result$chi2[1]
-W-F_
-#----
+
