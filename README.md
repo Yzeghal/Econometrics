@@ -5,7 +5,9 @@ Most of the code is vectorised,, but some function remain built on nested for lo
 
 There are 2 main scripts :
 Jointly Exchangeable Dissociated Array OLS.R
+
 and
+
 Sandbox_tester.R
 
 You will find all the functions required to run a JEDA-2SLS in the first one.
