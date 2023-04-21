@@ -25,4 +25,4 @@ Use vcovHC(reg, type = "HC0") to have variance covariance matrix calculated with
 library(aod) #contains functions such that wald test, whiwh we use in 2SLS.
 source("C:/Users/tayoy/Documents/GitHub/Econometrics/Basic Regression.R", local = b <- new.env())
 
-Except matrixcalc, none of them is required, since they only serve to build benchmarks and compare results.
+Apart from matrixcalc, none of them is required, since they only serve to build benchmarks and compare results.
