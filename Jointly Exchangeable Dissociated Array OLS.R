@@ -22,8 +22,6 @@ J<-function(X,Y){ #returnns J NORMALISED by nuber of observations used in the su
   not_na=not_nax&not_nay
   nb_obs=sum(not_na)
   M=matrix(0,dim(X)[3],dim(X)[3])
-  print(all(not_na))
-  print(nb_obs)
   for (i in 1:dim(X)[1]){
     for (j in 1:dim(X)[1]){
       if (not_na[i,j]){
