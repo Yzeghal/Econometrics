@@ -1,5 +1,33 @@
 source('C:/Users/tayoy/Documents/GitHub/Econometrics/Jointly Exchangeable Dissociated Array OLS.R')
+source("C:/Users/tayoy/Documents/GitHub/Econometrics/Basic Regression.R", local = b <- new.env())
+#If you want to compare with built-in functions :
+library(MASS)#to generate multivariate data
+library(lmtest) #to perform test with specified indications with coeftest
+library(sandwich) # to compute heteroscedasticityvariance-covariance.
+# Use vcovHC(reg, type = "HC0") to have variance covariance matrix calculated with the sandwich formula.
+library(AER) #for a 2SLS built-in functions benchmark 
+
 #Case of OLS -----
+
+dispatch_na<-function(Arr,ind=2){
+  #Dispatches NAs to check robustness to missing values.
+  r=runif(dim(Arr)[1]*dim(Arr)[2],0,1)>0.9
+  #print(r)
+  frame=Arr[,,ind]
+  frame[r]<-NA
+  #print(frame)
+  Arr[,,ind]=frame
+  Arr
+}
+diag_na<-function(Arr){
+  #Puts NAs in diagonal so that those value won't count
+  d=dim(Arr)[1]
+  ind=(1:d-1)*(d+1)+1
+  m=matrix(Arr[,,2])
+  m[ind]<-NA
+  Arr[,,2]=m
+  return(Arr)
+}
 
 Beta_0 = matrix(c(1,2,4))
 n=50
@@ -144,8 +172,7 @@ M[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
 M[,,3] = Uij
 A = apply(M,MARGIN = c(1,2),FUN = g)
 A=aperm(A,c(2,3,1))
-#A=dispatch_na(A)
-#A=diag_na(A)
+
 Y = A[,,1]
 G = A[,,2]
 Z = A[,,3:4]
@@ -175,9 +202,9 @@ reg2
 noIV
 
 #Case of 2SLS with control variable----
-Beta_0 = matrix(c(1,2,3,4)) #constant coefficient included :(cst,G,X1,X2)
-Beta_1 = matrix(c(0,5,7)) #(cst,Z1, Z2) #boost cst coef to max mean(x) and the endogeneity error (on cst coef mainly)
-Beta_2 = matrix(c(0,4,8)) #(cst,Z1, Z2)
+Beta_0 = matrix(c(1,2,3,1)) #constant coefficient included :(cst,G,X1,X2)
+Beta_1 = matrix(c(10,5,7)) #(cst,Z1, Z2) #boost cst coef to max mean(x) and the endogeneity error (on cst coef mainly)
+Beta_2 = matrix(c(10,4,8)) #(cst,Z1, Z2)
 n=100
 Ui=runif(n,0,1)
 Uj=runif(n,0,1)
@@ -193,8 +220,8 @@ g2<-function(UiUjUij){
   N1=cos(p*U12) #orthogonal to all other random variables
   N2=cos(3*p*U12)
   G = U1+3*cos(7*p*U12) #orthogonal to U2, U12 and their cos(2pi n . ) for n !=7 but not U1 
-  eps1 = 3*(U1*U2/3+0.66)*N1 
-  eps2 = 3*(U1*U2/3+0.66)*N2
+  eps1 = 30*(U1*U2/3+0.66)*N1 
+  eps2 = 30*(U1*U2/3+0.66)*N2
   eps3 = N1+N2 #Correlated to eps1, eps2 but not Z. Also heteroscedastic
   Z1=U1
   Z2=U2
@@ -214,8 +241,12 @@ M[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
 M[,,3] = Uij
 A = apply(M,MARGIN = c(1,2),FUN = g2)
 A=aperm(A,c(2,3,1))
-#A=dispatch_na(A)
-#A=diag_na(A)
+A=dispatch_na(A,1)
+A=dispatch_na(A,2)
+A=dispatch_na(A,3)
+A=dispatch_na(A,4)
+A=dispatch_na(A,5)
+A=diag_na(A)
 Y = A[,,1]
 G = A[,,2:3]
 Z = A[,,4:5]
@@ -229,16 +260,19 @@ x2=as.vector(X[,,2])
 z1=as.vector(Z[,,1])
 z2=as.vector(Z[,,2])
 g1=as.vector(G[,,2])
+y =as.vector(Y)
+cor(e3,x1)
+cor(e3,x2)
 cor(e3,z1)
 cor(e3,z2)
 reg1=FS_OLS(G,Z,X) #regression of X on G and Z
-reg1
 B = reg1$Betas
 D=predIV(G,Z,X,first_Betas=B)
 GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
 GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #to compare with X
+GZ=array(c(G,Z),dim=c(dim(G)[1:2],dim(Z)[3]+dim(G)[3]))
 
-reg2=OLS(GD,Y,model="JEDA") #regression of Y on G and D
+reg2=OLS(GD,Y,model="BASIC") #regression of Y on G and D
 noIV<-OLS(GX,Y,model="BASIC")
 reg3<-IV_LS(G,Z,X,Y)
 reg2
@@ -251,7 +285,20 @@ Beta_hat = matrix(reg2$coefs[,1])
 asvar = reg2$var
 F_= 100 * t(Beta_hat)%*%matrix.inverse(asvar)%*%Beta_hat 
 W=wald.test(Sigma=asvar/100, b=Beta_hat, L=diag(length(Beta_hat)),verbose=TRUE)$result$chi2[1]
-W-F_
+W-F_ #~1e-10
 #----
 
+#comparaison with built-in
+#----
 
+iv<-ivreg(formula = y ~ x1 + x2 + g1 | z1 + z2 + g1)
+iv
+reg3$SLS$coefs
+
+BetaBuiltIn=lm(x1~g1+z1+z2)$coefficients
+reg1
+cz=cbind(g1,z1,z2)
+GoodBeta=b$reg_OLS(cz,matrix(x1))$coefs[,1]
+Beta(GZ,as.matrix(X[,,1]))
+BetaOls2=Beta(GZ,X[,,1])
+J(GZ,X[,,1])

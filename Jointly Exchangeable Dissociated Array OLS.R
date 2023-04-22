@@ -1,9 +1,5 @@
 # Script for MCO in the case of jointly echangeable and dissociated arrays.
 library(matrixcalc) #for matrix inversion and others
-library(MASS)#to generate multivariate data
-library(lmtest) #to perform test with specified indications with coeftest
-library(sandwich) # to compute heteroscedasticityvariance-covariance.
-# Use vcovHC(reg, type = "HC0") to have variance covariance matrix calculated with the sandwich formula.
 library(aod) #contains functions such that wald test, whiwh we use in 2SLS.
 #source("C:/Users/tayoy/Documents/GitHub/Econometrics/Basic Regression.R", local = b <- new.env())
 #library(AER) #for a 2SLS built-in functions benchmark 
@@ -26,7 +22,8 @@ J<-function(X,Y){ #returnns J NORMALISED by nuber of observations used in the su
   not_na=not_nax&not_nay
   nb_obs=sum(not_na)
   M=matrix(0,dim(X)[3],dim(X)[3])
-  
+  print(all(not_na))
+  print(nb_obs)
   for (i in 1:dim(X)[1]){
     for (j in 1:dim(X)[1]){
       if (not_na[i,j]){
@@ -37,7 +34,7 @@ J<-function(X,Y){ #returnns J NORMALISED by nuber of observations used in the su
   M=M/nb_obs
   return (M)
 }
-B<-function(X,Y){ #returnns B NORMALISED by nuber of observations used in the sum
+B_hat<-function(X,Y){ #returnns B NORMALISED by nuber of observations used in the sum
   #----
   if (dim(X)[1]!=dim(X)[2]){
     stop("Matrix X is not square !")
@@ -317,7 +314,7 @@ standard_errors<-function (var,nx){
 }
 
 student_t<-function(Beta_hat,sd,hyp = 0){
-  if (sd==0){stop("sd is 0. Sth to correct")}
+  if (any(sd==0)){stop("sd is 0. Sth to correct")}
   t=(Beta_hat-hyp)/sd
   return(t)
 }
@@ -473,7 +470,7 @@ predIV<-function(G,Z,X,first_Betas=NULL){
     stop('Arrays should be square in their first 2 dimensions ')
   }
   m=matrix(1,dim(G)[1],dim(G)[2])
-  if(any(G[,,1]!=m)){
+  if(any(replace(G[,,1],is.na(G[,,1]),1)!=1)){
     stop('Array G should contain the vector 1 in first position')
   }
   #----
@@ -514,14 +511,15 @@ IV_LS<-function(G,Z,X,Y,hyp=0){
     stop('Array G should contain the vector 1 in first position')
   }
   #----
-  GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #This time it is done with other notation.
-  GZ=array(c(G,Z),dim=c(dim(G)[1:2],dim(Z)[3]+dim(G)[3])) #Errors due to re-regression of G on G are 1e-16
-  reg1=FS_OLS(G,Z,GX)#regression of X on G and Z
-  GD=predIV(G,Z,GX,first_Betas=reg1$Betas)
+  GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3]))
+  GZ=array(c(G,Z),dim=c(dim(G)[1:2],dim(Z)[3]+dim(G)[3])) 
+  reg1=FS_OLS(G,Z,X)#regression of X on G and Z
+  D=predIV(G,Z,X,first_Betas=reg1$Betas)
+  GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
   Beta_2SLS=Beta(GD,Y)
   ep=eps(GX,Y,b=Beta_2SLS)
   A=J(GZ,Y)
-  B=B(GZ,GX)
+  B=B_hat(GZ,GX)
   H=H_JEDA(X=GZ,Y=Y,ep=ep)
   invA = matrix.inverse(A)
   bread = matrix.inverse(t(B)%*%invA%*%B)
@@ -544,6 +542,7 @@ IV_LS<-function(G,Z,X,Y,hyp=0){
   SCT = sum((Y-my)^2, na.rm = TRUE)
   R2<-SCE/SCT
   
-  return(list('SLS'=list('coefs'=values, 'var'=asvar, 'F'=F_test,"R2"= R2),"FLS"=list('R2'=reg1$R2,'F'=reg1$F)))
+  return(list('SLS'=list('coefs'=values, 'var'=asvar, 'F'=F_test,"R2"= R2),
+              'FLS'=list('R2'=reg1$R2,'F'=reg1$F)))
 }
 

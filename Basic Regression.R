@@ -25,7 +25,7 @@ coefs<-function(X,Y){
   if (nx!=ny){stop('not the same number of observations')}
   X=cbind(rep(1,nx),X)
   M=t(X)%*%X
-  if (det(M)==0){stop('Matrix X\'X non inversible !')}
+  #if (det(M)==0){stop('Matrix X\'X non inversible !')}
   matrix.inverse(t(X)%*%X)%*%(t(X)%*%Y)
 }
 
