@@ -1,7 +1,6 @@
 # Script for MCO in the case of jointly echangeable and dissociated arrays.
 library(matrixcalc) #for matrix inversion and others
 library(aod) #contains functions such that wald test we use in 2SLS. Homemade version is in Sandbox_tester
-#source("C:/Users/tayoy/Documents/GitHub/Econometrics/Basic Regression.R", local = b <- new.env())
 library(AER) #for a 2SLS built-in estimator (much better than homemade one in case of NAs)
 library (R.utils) #to wrap array if we use built-in methods instead of homemade ones
 
