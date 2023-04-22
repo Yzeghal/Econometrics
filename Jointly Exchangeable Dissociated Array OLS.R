@@ -3,7 +3,7 @@ library(matrixcalc) #for matrix inversion and others
 library(aod) #contains functions such that wald test, whiwh we use in 2SLS.
 #source("C:/Users/tayoy/Documents/GitHub/Econometrics/Basic Regression.R", local = b <- new.env())
 #library(AER) #for a 2SLS built-in functions benchmark 
-
+library (R.utils)
 
 #Computations ----
 spot_na<-function(A){
@@ -95,8 +95,8 @@ Beta2<-function(X,Y){
   matrix.inverse(J_hat)%*%second_term
 } #Not to be used. Was expected to be better than Beta, but is not.
 
-Beta<-function(X,Y, J_hat=NULL){ #Does the match with lm results (which simply drops all observations) and seems more precise...
-  #add H_hat in argument if it was already calculated.
+Beta<-function(X,Y, J_hat=NULL){ #Does the match with lm results (which simply drops all NA observations) and seems more precise...
+  #add J_hat in argument if it was already calculated.
   #Safety tests
   #----
   if (any(dim(Y)!=dim(X)[1:2])){
@@ -262,8 +262,12 @@ H_JEDA<-function(X,Y,b=NULL, ep=NULL){
   
   not_naX=!map_na(X)
   not_naY=!map_na(Y)
-  viable = not_naX&not_naY #ep is already NA if X or Y is NA
+  not_naEP=!map_na(ep)
+  viable = (not_naX&not_naY)&not_naEP
+
   #tests that diagonal is NA
+  paste(sum(viable),'viable ')
+  
   if (sum(diag(viable))!=0){
     warn=paste(sum(diag(viable)),"terms in the diagonal. Should be 0")
     warning(warn)
@@ -326,11 +330,11 @@ p_values<-function(Beta_hat, sd ,nx , hyp = 0){
 
 #----
 
-OLS<-function(X,Y,hyp=0,model="JEDA"){
+OLS<-function(X,Y,hyp=0,model="JEDA",built_in_reg=TRUE){
   #safety tests
   #----
-  if (!any(model==(c('JEDA','BASIC')))){
-    stop("Model not recognised. Try \'JEDA\' or \'BASIC\' instead.")
+  if (!any(model==(c('JEDA','BASIC','NO ASVAR')))){
+    stop("Model not recognised. Try \'JEDA\' or \'BASIC\' or \'NO ASVAR\'instead.")
   }
   if (!is.array(X)){
     stop("X should be an array")
@@ -341,7 +345,7 @@ OLS<-function(X,Y,hyp=0,model="JEDA"){
   dimx=dim(X)
   dimy=dim(Y)
   if (any(dimx[1:2]!=dimy)){
-    message=paste("\ndimension of X :", dimx, "\nimension of Y :", dimy)
+    message=paste("\ndimension of X :", dimx, "\ndimension of Y :", dimy)
     stop(message)
   }
   if (!is.square.matrix(Y)){
@@ -352,14 +356,22 @@ OLS<-function(X,Y,hyp=0,model="JEDA"){
   not_naY=!map_na(Y)
   viable = not_naX&not_naY
   nb_obs = sum(viable)
-  message("Start Beta Calculation...")
   J_hat=J(X,Y)
   if (det(J_hat)==0){
     print('J:')
     print (J_hat)
     stop ("J is singular !")
   }
-  Beta_hat = Beta(X,Y, J=J_hat)
+  if (built_in_reg ==TRUE){
+    x=wrap(X, map = list(NA,3))
+    y=as.vector(Y)
+    message("Beta Calculation with built-in method...")
+    Beta_hat=matrix(lm(y~x -1)$coefficients)
+  }
+  else{
+    message("Beta Calculation with homemade method...")
+    Beta_hat = Beta(X,Y, J=J_hat)}
+  
   if (model == "JEDA"){
     H_hat=H_JEDA(X,Y,b=Beta_hat)
     asvar=asymptotic_variance_OLS(J=J_hat, H=H_hat)
@@ -388,6 +400,13 @@ OLS<-function(X,Y,hyp=0,model="JEDA"){
     ep = eps(X,Y,Beta_hat)
     my=mean(Y, na.rm=TRUE)
   }
+  if (model =="NO ASVAR"){
+    values = matrix(Beta_hat)
+    Y_hat = estimate(X,Beta_hat)
+    my=mean(Y, na.rm=TRUE)
+    asvar = NA
+    F_test=NA
+  }
 
   if (sd(Y,na.rm=TRUE)==0){
     R2=1
@@ -403,7 +422,7 @@ OLS<-function(X,Y,hyp=0,model="JEDA"){
 
 #2SLS functions
 #----
-FS_OLS<-function(G,Z,X){
+FS_OLS<-function(G,Z,X,built_in_reg=TRUE){
   #G contains control variables
   #Z contains IV
   #X contains the variables that will be regressed on G and Z
@@ -433,7 +452,7 @@ FS_OLS<-function(G,Z,X){
   F_=rep(0,dim(X)[3])
   GZ=array(c(G,Z),dim=c(dim(G)[1:2], dim(G)[3]+dim(Z)[3]))
   for (i in 1:dim(X)[3]){
-    reg=OLS(GZ,X[,,i],model = "JEDA") #We only need the R2 and usual F-tests
+    reg=OLS(GZ,X[,,i],model = "JEDA", built_in_reg = built_in_reg) #We only need the R2 and usual F-tests
     Betas[,i]=reg$coefs[,1]
     R2[i]=reg$R2
     F_[i]=reg$F
@@ -483,7 +502,7 @@ predIV<-function(G,Z,X,first_Betas=NULL){
   return (D)
 }
 
-IV_LS<-function(G,Z,X,Y,hyp=0){
+IV_LS<-function(G,Z,X,Y,hyp=0,built_in_reg=TRUE){
   #G : controls
   #Z : instruments
   #X : endogenous variable
@@ -511,21 +530,38 @@ IV_LS<-function(G,Z,X,Y,hyp=0){
   #----
   GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3]))
   GZ=array(c(G,Z),dim=c(dim(G)[1:2],dim(Z)[3]+dim(G)[3])) 
-  reg1=FS_OLS(G,Z,X)#regression of X on G and Z
+  reg1=FS_OLS(G,Z,X,built_in_reg = FALSE)#regression of X on G and Z
   D=predIV(G,Z,X,first_Betas=reg1$Betas)
   GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
-  Beta_2SLS=Beta(GD,Y)
+  
+  if(built_in_reg==FALSE){
+    Beta_2SLS=OLS(GD,Y, model = "NO ASVAR",built_in_reg=built_in_reg)$coefs[,1] #only Beta_hat matters here
+  }
+  else{
+    y=as.vector(Y)
+    g1=wrap.array(G,map = list(NA,3))[,-1]
+    x1=wrap.array(X,map = list(NA,3))
+    z1=wrap.array(Z,map = list(NA,3))
+    Beta_2SLS = ivreg(y~g1+x1|g1+z1)$coefficients
+  }
+
   ep=eps(GX,Y,b=Beta_2SLS)
+  
   A=J(GZ,Y)
   B=B_hat(GZ,GX)
   H=H_JEDA(X=GZ,Y=Y,ep=ep)
+
   invA = matrix.inverse(A)
   bread = matrix.inverse(t(B)%*%invA%*%B)
   salad = t(B)%*%invA
   asvar = bread%*%salad%*%H%*%t(salad)%*%bread #Formula
   
+  print("final regression")
+  print(Beta_2SLS)
   dimx=dim(X)
+
   std=standard_errors(asvar,dimx[1])
+
   ts=student_t(Beta_2SLS,std,hyp = hyp)
   p_val=p_values(Beta_2SLS, std ,dimx[1] , hyp = 0)
   if (sum(abs(hyp))==0){hyp = rep(0,length(Beta_2SLS))}

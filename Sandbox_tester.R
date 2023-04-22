@@ -202,9 +202,11 @@ reg2
 noIV
 
 #Case of 2SLS with control variable----
+source('C:/Users/tayoy/Documents/GitHub/Econometrics/Jointly Exchangeable Dissociated Array OLS.R')
+
 Beta_0 = matrix(c(1,2,3,1)) #constant coefficient included :(cst,G,X1,X2)
-Beta_1 = matrix(c(10,5,7)) #(cst,Z1, Z2) #boost cst coef to max mean(x) and the endogeneity error (on cst coef mainly)
-Beta_2 = matrix(c(10,4,8)) #(cst,Z1, Z2)
+Beta_1 = matrix(c(10,10,5,7)) #(cst,Z1, Z2) #boost cst coef to max mean(x) and the endogeneity error (on cst coef mainly)
+Beta_2 = matrix(c(10,10,4,8)) #(cst,Z1, Z2)
 n=100
 Ui=runif(n,0,1)
 Uj=runif(n,0,1)
@@ -225,8 +227,8 @@ g2<-function(UiUjUij){
   eps3 = N1+N2 #Correlated to eps1, eps2 but not Z. Also heteroscedastic
   Z1=U1
   Z2=U2
-  X1=t(Beta_1)%*%matrix(c(1,Z1,Z2))+10*G+eps1 #correlate G and X to have impact on G coef in OLS but not so much in 2SLS
-  X2=t(Beta_2)%*%matrix(c(1,Z1,Z2))+10*G+eps2
+  X1=t(Beta_1)%*%matrix(c(1,G,Z1,Z2))+eps1 #correlate G and X to have impact on G coef in OLS but not so much in 2SLS
+  X2=t(Beta_2)%*%matrix(c(1,G,Z1,Z2))+eps2
   Y =t(Beta_0)%*%c(1,G,X1,X2)+eps3 #Y explained by X with endogeneity and heteroscedasticity
   r=c(Y,1,G,Z1,Z2,X1,X2,eps1,eps2,eps3)
   return (r)
@@ -241,11 +243,10 @@ M[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
 M[,,3] = Uij
 A = apply(M,MARGIN = c(1,2),FUN = g2)
 A=aperm(A,c(2,3,1))
-A=dispatch_na(A,1)
-A=dispatch_na(A,2)
-A=dispatch_na(A,3)
-A=dispatch_na(A,4)
-A=dispatch_na(A,5)
+for (i in 1:7){
+  A=dispatch_na(A,i)
+}
+
 A=diag_na(A)
 Y = A[,,1]
 G = A[,,2:3]
@@ -265,20 +266,20 @@ cor(e3,x1)
 cor(e3,x2)
 cor(e3,z1)
 cor(e3,z2)
-reg1=FS_OLS(G,Z,X) #regression of X on G and Z
-B = reg1$Betas
+sd(e3)
+reg1=FS_OLS(G,Z,X,built_in_reg = FALSE ) #regression of X on G and Z
+B2 = reg1$Betas
 D=predIV(G,Z,X,first_Betas=B)
 GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
 GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #to compare with X
 GZ=array(c(G,Z),dim=c(dim(G)[1:2],dim(Z)[3]+dim(G)[3]))
 
-reg2=OLS(GD,Y,model="BASIC") #regression of Y on G and D
+reg2_built_out=OLS(GD,Y,model="JEDA", built_in_reg = FALSE) #regression of Y on G and D
+reg2_built_in=OLS(GD,Y,model="JEDA", built_in_reg = TRUE) #regression of Y on G and D
 noIV<-OLS(GX,Y,model="BASIC")
-reg3<-IV_LS(G,Z,X,Y)
-reg2
+reg3_built_in<-IV_LS(G,Z,X,Y,built_in_reg=TRUE)
+reg3_built_out<-IV_LS(G,Z,X,Y,built_in_reg=FALSE)
 noIV
-reg3
-reg3$SLS$coefs-reg2$coefs
 #Check wald.test 
 #---- 
 Beta_hat = matrix(reg2$coefs[,1])
@@ -288,17 +289,17 @@ W=wald.test(Sigma=asvar/100, b=Beta_hat, L=diag(length(Beta_hat)),verbose=TRUE)$
 W-F_ #~1e-10
 #----
 
-#comparaison with built-in
+#comparaison with built-in 2SLS
 #----
 
 iv<-ivreg(formula = y ~ x1 + x2 + g1 | z1 + z2 + g1)
-iv
-reg3$SLS$coefs
 
-BetaBuiltIn=lm(x1~g1+z1+z2)$coefficients
-reg1
+reg3_built_in$SLS$coefs[,1]-iv$coefficients[c(1,4,2,3)] #1e-13 even with nas
+reg3_built_out$SLS$coefs[,1]-iv$coefficients[c(1,4,2,3)] #1e-10 if no Nas
+
+
 cz=cbind(g1,z1,z2)
 GoodBeta=b$reg_OLS(cz,matrix(x1))$coefs[,1]
-Beta(GZ,as.matrix(X[,,1]))
 BetaOls2=Beta(GZ,X[,,1])
 J(GZ,X[,,1])
+
