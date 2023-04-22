@@ -13,7 +13,7 @@ Sandbox_tester.R
 You will find all the functions required to run a JEDA-2SLS in the first one.
 The second one contains many tests of the functions, but also illustration.
 I mainly used it to generate 2d JEDAS with endogeneity, control variables and heteroscedasticity, using Aldous(1981) representation.
-
+Basic Regression.R contains code that are not directly useful, but work well and are used as benchmarks in the sandbox.
 It is part of our StatApp Project
 
 The different libraries used are : 
