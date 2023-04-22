@@ -260,7 +260,7 @@ x1=as.vector(X[,,1])
 x2=as.vector(X[,,2])
 z1=as.vector(Z[,,1])
 z2=as.vector(Z[,,2])
-g1=as.vector(G[,,2])
+k1=as.vector(G[,,2])
 y =as.vector(Y)
 cor(e3,x1)
 cor(e3,x2)
@@ -292,10 +292,10 @@ W-F_ #~1e-10
 #comparaison with built-in 2SLS
 #----
 
-iv<-ivreg(formula = y ~ x1 + x2 + g1 | z1 + z2 + g1)
+iv<-ivreg(formula = y ~k1 + x1 + x2  | k1+ z1 + z2 )
 
-reg3_built_in$SLS$coefs[,1]-iv$coefficients[c(1,4,2,3)] #1e-13 even with nas
-reg3_built_out$SLS$coefs[,1]-iv$coefficients[c(1,4,2,3)] #1e-10 if no Nas
+reg3_built_in$SLS$coefs[,1]-iv$coefficients #1e-13 even with nas
+reg3_built_out$SLS$coefs[,1]-iv$coefficients #1e-10 if no Nas
 
 
 cz=cbind(g1,z1,z2)

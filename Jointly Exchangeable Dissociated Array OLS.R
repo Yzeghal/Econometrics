@@ -542,7 +542,7 @@ IV_LS<-function(G,Z,X,Y,hyp=0,built_in_reg=TRUE){
     g1=wrap.array(G,map = list(NA,3))[,-1]
     x1=wrap.array(X,map = list(NA,3))
     z1=wrap.array(Z,map = list(NA,3))
-    Beta_2SLS = ivreg(y~g1+x1|g1+z1)$coefficients
+    Beta_2SLS = ivreg(y~g1+x1|g1+z1)$coefficients #puts coefs in the order used in the whole script.
   }
 
   ep=eps(GX,Y,b=Beta_2SLS)
