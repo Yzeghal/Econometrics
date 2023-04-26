@@ -533,17 +533,40 @@ IV_LS<-function(G,Z,X,Y,hyp=0,built_in_reg=TRUE){
   D=predIV(G,Z,X,first_Betas=reg1$Betas)
   GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
   
+  
   if(built_in_reg==FALSE){
     Beta_2SLS=OLS(GD,Y, model = "NO ASVAR",built_in_reg=built_in_reg)$coefs[,1] #only Beta_hat matters here
   }
+  
   else{
     y=as.vector(Y)
-    g1=wrap.array(G,map = list(NA,3))[,-1]
-    x1=wrap.array(X,map = list(NA,3))
-    z1=wrap.array(Z,map = list(NA,3))
-    Beta_2SLS = ivreg(y~g1+x1|g1+z1)$coefficients #puts coefs in the order used in the whole script.
+    if (dim(G)[3]>1){
+      g1=wrap.array(G,map = list(NA,3))[,-1]
+      case = TRUE #include g1 in regression
+    }
+    else{
+      case = FALSE 
+    }
+    if (dim(X)[3]>1){
+      x1=wrap.array(X,map = list(NA,3))
+    }
+    else{
+      x1=as.vector(X)
+    }
+    if(dim(Z)[3]>1){
+      z1=wrap.array(Z,map = list(NA,3))
+    }
+    else{
+      z=as.vector(Z)
+    }
+    if (case==TRUE){
+      Beta_2SLS = ivreg(y~g1+x1|g1+z1)$coefficients #puts coefs in the order used in the whole script.
+    }
+    else{
+      Beta_2SLS = ivreg(y~x1|z1)$coefficients
+    }
   }
-
+  
   ep=eps(GX,Y,b=Beta_2SLS)
   
   A=J(GZ,Y)
@@ -578,3 +601,4 @@ IV_LS<-function(G,Z,X,Y,hyp=0,built_in_reg=TRUE){
   return(list('SLS'=list('coefs'=values, 'var'=asvar, 'F'=F_test,"R2"= R2),
               'FLS'=list('R2'=reg1$R2,'F'=reg1$F)))
 }
+

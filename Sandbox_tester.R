@@ -269,7 +269,7 @@ cor(e3,z2)
 sd(e3)
 reg1=FS_OLS(G,Z,X,built_in_reg = FALSE ) #regression of X on G and Z
 B2 = reg1$Betas
-D=predIV(G,Z,X,first_Betas=B)
+D=predIV(G,Z,X,first_Betas=B2)
 GD=array(c(G,D),dim=c(dim(G)[1:2],dim(D)[3]+dim(G)[3]))
 GX=array(c(G,X),dim=c(dim(G)[1:2],dim(X)[3]+dim(G)[3])) #to compare with X
 GZ=array(c(G,Z),dim=c(dim(G)[1:2],dim(Z)[3]+dim(G)[3]))
@@ -282,8 +282,8 @@ reg3_built_out<-IV_LS(G,Z,X,Y,built_in_reg=FALSE)
 noIV
 #Check wald.test 
 #---- 
-Beta_hat = matrix(reg2$coefs[,1])
-asvar = reg2$var
+Beta_hat = matrix(reg2_built_out$coefs[,1])
+asvar = reg2_built_out$var
 F_= 100 * t(Beta_hat)%*%matrix.inverse(asvar)%*%Beta_hat 
 W=wald.test(Sigma=asvar/100, b=Beta_hat, L=diag(length(Beta_hat)),verbose=TRUE)$result$chi2[1]
 W-F_ #~1e-10
