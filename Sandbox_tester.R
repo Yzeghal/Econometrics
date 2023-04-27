@@ -239,7 +239,7 @@ g2<-function(UiUjUij){
 #----
 M=array(0,c(n,n,3))
 M[,,1] = matrix(rep(Ui,n),c(n,n), byrow=FALSE) 
-M[,,2] = matrix(rep(Uj,n),c(n,n), byrow=TRUE)
+M[,,2] = matrix(rep(Ui,n),c(n,n), byrow=TRUE) #test with the same i and not i,j
 M[,,3] = Uij
 A = apply(M,MARGIN = c(1,2),FUN = g2)
 A=aperm(A,c(2,3,1))
@@ -278,7 +278,7 @@ reg2_built_out=OLS(GD,Y,model="JEDA", built_in_reg = FALSE) #regression of Y on 
 reg2_built_in=OLS(GD,Y,model="JEDA", built_in_reg = TRUE) #regression of Y on G and D
 noIV<-OLS(GX,Y,model="BASIC")
 reg3_built_in<-IV_LS(G,Z,X,Y,built_in_reg=TRUE)
-reg3_built_out<-IV_LS(G,Z,X,Y,built_in_reg=FALSE)
+reg3_built_out2<-IV_LS(G,Z,X,Y,built_in_reg=FALSE)
 noIV
 #Check wald.test 
 #---- 
