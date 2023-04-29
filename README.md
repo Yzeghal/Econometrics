@@ -44,6 +44,7 @@ Outputs :
 list('SLS'=list('coefs'=values, 'var'=asvar, 'F'=F_test,"R2"= R2),
       'FLS'=list('R2'=reg1$R2,'F'=reg1$F)))
 A nested list containing informations on both regressions. 
+The Beta vector contains the control coefficients (starting with 1) and X coefficients, in the same order as given.
 F statistics are built with the JEDA estimated asymptotic variance in the 1st and 2nd stage.
 
 Unless you are sure not to have NAs out of your diagonal set (observations with the same index), please use all parameters as set to default. 
