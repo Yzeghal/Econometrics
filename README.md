@@ -1,7 +1,7 @@
 # Econometrics
 This repository contains codes to run a regression adapted to jointly exchangeable and dissociated arrays. 
 Everything from heteroscedastic robust OLS to JEDA 2SLS was recoded "by hand" with matrix formulas.
-Most of the code is vectorised,, but some function remain built on nested for loops, but a set of 10  000 observation does not make the difference tangible. Wald test was taken form aod library, but I checked it performed the exact matrix calculation (see sandbow script)
+Most of the code is vectorised, but some function remain built on nested for loops, but a set of 10  000 observation does not make the difference tangible. Wald test was taken form aod library, but I checked it performed the exact matrix calculation (see sandbow script)
 
 There are 2 main scripts :
 Jointly Exchangeable Dissociated Array OLS.R
